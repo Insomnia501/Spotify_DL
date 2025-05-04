@@ -52,6 +52,7 @@ htmlcov/
 .nox/
 .hypothesis/
 coverage/
+.cache/
 
 # 下载的音乐文件
 *.mp3
