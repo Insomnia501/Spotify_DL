@@ -6,6 +6,8 @@
 
 ```bash
 pip install spotifydl
+本地安装
+pip install -e .
 ```
 
 ## 使用方法
