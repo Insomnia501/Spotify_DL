@@ -4,12 +4,15 @@ setup(
     name="spotifydl",
     version="0.1.0",
     packages=find_packages(),
+    include_package_data=True,
     install_requires=[
         "requests>=2.31.0",
         "spotipy>=2.23.0",
         "yt-dlp>=2023.11.16",
+        "ytmusicapi",
         "click>=8.1.7",
         "python-dotenv>=1.0.0",
+        "mutagen",
     ],
     entry_points={
         "console_scripts": [
