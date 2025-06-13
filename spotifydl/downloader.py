@@ -26,7 +26,8 @@ class MusicSource(ABC):
         pass
 
     @abstractmethod
-    def download_track(self, url: str, output_path: str, format: str, quality: str, track_info: Dict[str, Any]) -> bool:
+    def download_track(self, url: str, output_path: str, format: str, quality: str, track_info: Dict[str, Any], 
+                      cookies: Optional[str] = None, cookies_from_browser: Optional[str] = None) -> bool:
         """下载音乐"""
         pass
 
@@ -52,7 +53,8 @@ class DeezerSource(MusicSource):
             logger.error(f"Deezer搜索失败: {str(e)}")
         return None
 
-    def download_track(self, url: str, output_path: str, format: str, quality: str, track_info: Dict[str, Any]) -> bool:
+    def download_track(self, url: str, output_path: str, format: str, quality: str, track_info: Dict[str, Any], 
+                      cookies: Optional[str] = None, cookies_from_browser: Optional[str] = None) -> bool:
         # 实现 Deezer 下载逻辑
         logger.warning("Deezer下载功能尚未完全实现。")
         return False
@@ -78,7 +80,8 @@ class SoundCloudSource(MusicSource):
             logger.error(f"SoundCloud搜索失败: {str(e)}")
         return None
 
-    def download_track(self, url: str, output_path: str, format: str, quality: str, track_info: Dict[str, Any]) -> bool:
+    def download_track(self, url: str, output_path: str, format: str, quality: str, track_info: Dict[str, Any], 
+                      cookies: Optional[str] = None, cookies_from_browser: Optional[str] = None) -> bool:
         # 实现 SoundCloud 下载逻辑
         logger.warning("SoundCloud下载功能尚未完全实现。")
         return False
@@ -193,7 +196,8 @@ class YouTubeMusicSource(MusicSource):
         except Exception as e:
             logger.warning(f"设置音频标签失败: {str(e)}")
 
-    def download_track(self, url: str, output_path: str, format: str, quality: str, track_info: Dict[str, Any]) -> bool:
+    def download_track(self, url: str, output_path: str, format: str, quality: str, track_info: Dict[str, Any], 
+                      cookies: Optional[str] = None, cookies_from_browser: Optional[str] = None) -> bool:
         try:
             # 确保输出路径是绝对路径
             output_path = os.path.abspath(os.path.expanduser(output_path))
@@ -220,7 +224,31 @@ class YouTubeMusicSource(MusicSource):
                 'quiet': False,
                 'no_warnings': False,
                 'keepvideo': False,
+                # 添加反检测措施
+                'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'referer': 'https://music.youtube.com/',
+                'extractor_retries': 3,
+                'fragment_retries': 3,
+                'retry_sleep': 2,
+                # HTTP headers
+                'http_headers': {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                    'Accept-Language': 'en-us,en;q=0.5',
+                    'Accept-Encoding': 'gzip,deflate',
+                    'DNT': '1',
+                    'Connection': 'keep-alive',
+                    'Upgrade-Insecure-Requests': '1',
+                }
             }
+            
+            # 添加 cookies 支持
+            if cookies:
+                ydl_opts['cookiefile'] = cookies
+                logger.info(f"使用 cookies 文件: {cookies}")
+            elif cookies_from_browser:
+                ydl_opts['cookiesfrombrowser'] = (cookies_from_browser,)
+                logger.info(f"从浏览器导入 cookies: {cookies_from_browser}")
             
             with YoutubeDL(ydl_opts) as ydl:
                 # 下载音频
@@ -404,7 +432,8 @@ class SpotifyDownloader:
 
         return best_match if highest_score >= 5 else None
 
-    def download(self, url: str, output_path: str, format: str = 'mp3', quality: str = '320k', source: str = 'auto') -> bool:
+    def download(self, url: str, output_path: str, format: str = 'mp3', quality: str = '320k', 
+                source: str = 'auto', cookies: Optional[str] = None, cookies_from_browser: Optional[str] = None) -> bool:
         """下载歌曲"""
         try:
             # 提取track ID
@@ -434,25 +463,39 @@ class SpotifyDownloader:
             if not sources_to_try:
                 raise ValueError(f"指定的音乐源 '{source}' 不可用")
             
+            # 记录最后的错误信息
+            last_error = None
+            
             # 尝试从指定的音乐源下载
             for music_source in sources_to_try:
                 try:
+                    logger.info(f"尝试使用音乐源: {music_source.__class__.__name__}")
                     download_url = music_source.search_track(track_info)
                     if download_url:
                         logger.info(f"找到音乐源: {music_source.__class__.__name__}")
-                        if music_source.download_track(download_url, output_path, format, quality, track_info):
+                        if music_source.download_track(download_url, output_path, format, quality, track_info, cookies, cookies_from_browser):
                             logger.info(f"下载完成: {track_info['name']}")
                             return True
+                        else:
+                            last_error = f"{music_source.__class__.__name__} 下载失败"
+                    else:
+                        last_error = f"{music_source.__class__.__name__} 未找到匹配的音乐"
+                        
                 except Exception as e:
-                    logger.warning(f"从 {music_source.__class__.__name__} 下载失败: {str(e)}")
-                    if source != 'auto':  # 如果指定了特定源，不继续尝试其他源
+                    last_error = f"从 {music_source.__class__.__name__} 下载失败: {str(e)}"
+                    logger.warning(last_error)
+                    
+                    # 如果不是自动模式，直接抛出错误
+                    if source != 'auto':
                         raise
+                    
                     continue
             
+            # 所有源都失败了
             if source == 'auto':
-                raise ValueError("所有音乐源都无法下载该歌曲")
+                raise ValueError(f"所有音乐源都无法下载该歌曲。最后错误: {last_error}")
             else:
-                raise ValueError(f"无法从指定的音乐源 '{source}' 下载该歌曲")
+                raise ValueError(f"无法从指定的音乐源 '{source}' 下载该歌曲。错误: {last_error}")
             
         except Exception as e:
             logger.error(f"下载失败: {str(e)}")

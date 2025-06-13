@@ -37,11 +37,13 @@ spotifydl --url "https://open.spotify.com/track/your_track_id" -o "/path/to/outp
 - `--format` 或 `-f`: 输出格式（可选，默认为 mp3）
 - `--quality` 或 `-q`: 音频质量（可选，默认为 320k）
 - `--source` 或 `-s`: 指定音乐源（可选，可选值：deezer, youtubemusic, soundcloud, auto，默认为 youtubemusic）
+- `--cookies` 或 `-c`: Cookie文件路径（可选，用于YouTube验证）
+- `--cookies-from-browser`: 从浏览器导入cookies（可选，支持：chrome, firefox, edge, safari）
 
 ## 示例
 
 ```bash
-# 下载单首歌曲（自动选择最佳音乐源）
+# 下载单首歌曲（使用默认的YouTube Music源）
 spotifydl -u "https://open.spotify.com/track/4cOdK2wGLETKBW3PvgPWqT" -o "./music"
 
 # 指定使用 Deezer 源下载
@@ -50,13 +52,19 @@ spotifydl -u "https://open.spotify.com/track/4cOdK2wGLETKBW3PvgPWqT" -o "./music
 # 指定使用 YouTube Music 源下载
 spotifydl -u "https://open.spotify.com/track/4cOdK2wGLETKBW3PvgPWqT" -o "./music" -s youtubemusic
 
+# 使用Chrome浏览器的cookies（解决YouTube机器人验证）
+spotifydl -u "https://open.spotify.com/track/4cOdK2wGLETKBW3PvgPWqT" -o "./music" --cookies-from-browser chrome
+
+# 使用cookie文件
+spotifydl -u "https://open.spotify.com/track/4cOdK2wGLETKBW3PvgPWqT" -o "./music" -c "/path/to/cookies.txt"
+
 # 指定输出格式和质量
 spotifydl -u "https://open.spotify.com/track/4cOdK2wGLETKBW3PvgPWqT" -o "./music" -f mp3 -q 320k
 ```
 
 ## 音乐源说明
 
-本工具支持多个音乐源，按以下优先级尝试下载：
+本工具支持多个音乐源：
 
 1. Deezer（需要 API 凭证）
    - 提供高质量音频
@@ -73,7 +81,7 @@ spotifydl -u "https://open.spotify.com/track/4cOdK2wGLETKBW3PvgPWqT" -o "./music
    - 支持多种音频格式
    - 需要 SoundCloud API 凭证
 
-工具会自动选择最佳匹配的音乐源，确保下载的音乐与 Spotify 链接中的音乐一致。匹配标准包括：
+工具会根据指定的音乐源进行下载，或在自动模式下按优先级尝试可用的音乐源。匹配标准包括：
 - 歌曲标题
 - 艺术家名称
 - 歌曲时长
@@ -90,3 +98,23 @@ spotifydl -u "https://open.spotify.com/track/4cOdK2wGLETKBW3PvgPWqT" -o "./music
 ## 许可证
 
 MIT License 
+
+## 解决YouTube机器人验证问题
+
+如果遇到 "Sign in to confirm you're not a bot" 错误，有以下几种解决方案：
+
+### 方法1：从浏览器导入cookies（推荐）
+```bash
+# 使用Chrome浏览器的cookies
+spotifydl -u "Spotify链接" -o "./music" --cookies-from-browser chrome
+
+# 使用Firefox浏览器的cookies
+spotifydl -u "Spotify链接" -o "./music" --cookies-from-browser firefox
+```
+
+### 方法2：使用cookie文件
+1. 从浏览器导出cookies到文件
+2. 使用 `--cookies` 参数指定文件路径：
+```bash
+spotifydl -u "Spotify链接" -o "./music" -c "/path/to/cookies.txt"
+``` 

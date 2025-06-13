@@ -14,7 +14,9 @@ logger = logging.getLogger(__name__)
 @click.option('--format', '-f', default='mp3', help='输出格式 (默认: mp3)')
 @click.option('--quality', '-q', default='320k', help='音频质量 (默认: 320k)')
 @click.option('--source', '-s', default='youtubemusic', help='指定音乐源 (可选: deezer, youtubemusic, soundcloud, auto)')
-def main(url: str, output: str, format: str, quality: str, source: str):
+@click.option('--cookies', '-c', help='Cookie文件路径 (用于YouTube验证)')
+@click.option('--cookies-from-browser', help='从浏览器导入cookies (chrome, firefox, edge, safari)')
+def main(url: str, output: str, format: str, quality: str, source: str, cookies: str, cookies_from_browser: str):
     """从Spotify链接下载音乐"""
     try:
         # 加载环境变量
@@ -41,7 +43,7 @@ def main(url: str, output: str, format: str, quality: str, source: str):
         downloader = SpotifyDownloader(client_id, client_secret)
         
         # 开始下载
-        if downloader.download(url, output, format, quality, source):
+        if downloader.download(url, output, format, quality, source, cookies, cookies_from_browser):
             logger.info("下载成功完成！")
         else:
             logger.error("下载失败。")
