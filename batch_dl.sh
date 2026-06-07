@@ -12,11 +12,6 @@ TRACK_URLS=(
   "https://open.spotify.com/track/..."
 )
 
-cookie_args=()
-if [[ -n "$COOKIES_FROM_BROWSER" ]]; then
-  cookie_args=(--cookies-from-browser "$COOKIES_FROM_BROWSER")
-fi
-
 mkdir -p "$OUTPUT_DIR"
 
 for url in "${TRACK_URLS[@]}"; do
@@ -25,5 +20,9 @@ for url in "${TRACK_URLS[@]}"; do
     continue
   fi
 
-  spotifydl -u "$url" -o "$OUTPUT_DIR" -s "$SOURCE" "${cookie_args[@]}"
+  if [[ -n "$COOKIES_FROM_BROWSER" ]]; then
+    spotifydl -u "$url" -o "$OUTPUT_DIR" -s "$SOURCE" --cookies-from-browser "$COOKIES_FROM_BROWSER"
+  else
+    spotifydl -u "$url" -o "$OUTPUT_DIR" -s "$SOURCE"
+  fi
 done

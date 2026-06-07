@@ -10,13 +10,20 @@
 - `deezer`、`soundcloud`、`auto` 选项仍保留在 CLI 中，但下载逻辑尚未完整实现，不建议作为常规用法。
 - 支持单首或多首 Spotify track 链接；暂不支持 playlist/album 批量解析。
 
-## 环境要求
+## 环境要求(需要自行配置)
 
 - Python 3.8+
 - FFmpeg（`yt-dlp` 转音频需要）
-- Node.js（推荐；用于部分 YouTube 签名解析，代码会自动查找 `nvm` 或 PATH 中的 `node`）
+- yt-dlp（Python 依赖，执行 `pip install -e .` 时会自动安装；如需单独安装或升级可执行 `python -m pip install -U yt-dlp`）
+- Node.js 20.0.0+（推荐安装 Node.js 24 LTS 或更新的 LTS；用于 YouTube 签名解析，代码会自动查找 `nvm` 或 PATH 中的 `node`）
 
-## 安装
+macOS 可用 Homebrew 安装 FFmpeg：
+
+```bash
+brew install ffmpeg
+```
+
+## 安装本工具
 
 ```bash
 pip install -e .
@@ -30,6 +37,17 @@ pip install -e .
 SPOTIFY_CLIENT_ID=your_spotify_client_id
 SPOTIFY_CLIENT_SECRET=your_spotify_client_secret
 ```
+
+获取 `SPOTIFY_CLIENT_ID` 和 `SPOTIFY_CLIENT_SECRET`：
+
+1. 打开 [Spotify Developer Dashboard](https://developer.spotify.com/dashboard)，使用 Spotify 账号登录。
+2. 点击 `Create app` 创建应用，填写应用名称和描述。
+3. 创建完成后进入应用详情页，复制 `Client ID` 和 `Client Secret`。
+4. 将它们写入项目根目录的 `.env` 文件。
+
+Spotify 官方说明见 [Apps | Spotify for Developers](https://developer.spotify.com/documentation/web-api/concepts/apps)。
+
+![获取 Spotify Client ID 和 Secret](assets/2.png)
 
 ## 使用
 
@@ -49,7 +67,7 @@ spotifydl -u "https://open.spotify.com/track/..." -o "./music" -s youtubemusic
 
 如何获取Spotify单曲链接？
 
-![如何获取 Spotify 单曲链接](assets/ScreenShot_2026-06-07_150521_670.png)
+![如何获取 Spotify 单曲链接](assets/1.png)
 
 
 
