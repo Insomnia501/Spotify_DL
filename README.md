@@ -14,7 +14,6 @@
 
 - Python 3.8+
 - FFmpeg（`yt-dlp` 转音频需要）
-- yt-dlp（Python 依赖，执行 `pip install -e .` 时会自动安装；如需单独安装或升级可执行 `python -m pip install -U yt-dlp`）
 - Node.js 20.0.0+（推荐安装 Node.js 24 LTS 或更新的 LTS；用于 YouTube 签名解析，代码会自动查找 `nvm` 或 PATH 中的 `node`）
 
 macOS 可用 Homebrew 安装 FFmpeg：
