@@ -1,122 +1,111 @@
 # SpotifyDL
 
-一个简单的命令行工具，用于从 Spotify 链接下载音乐。支持多个音乐源，确保下载到高质量且匹配的音乐。
+从 Spotify 单曲链接读取歌曲元数据，并通过 `yt-dlp` 在 YouTube 上搜索、下载音频，最后写入标题、艺人、专辑、年份、曲序和封面等标签。
+
+> 仅供个人学习和研究使用。请遵守 Spotify、YouTube 及相关平台的服务条款和当地法律法规。
+
+## 当前状态
+
+- 当前可靠下载源：`youtubemusic`（实际通过 `yt-dlp` 搜索 YouTube）。
+- `deezer`、`soundcloud`、`auto` 选项仍保留在 CLI 中，但下载逻辑尚未完整实现，不建议作为常规用法。
+- 支持单首或多首 Spotify track 链接；暂不支持 playlist/album 批量解析。
+
+## 环境要求
+
+- Python 3.8+
+- FFmpeg（`yt-dlp` 转音频需要）
+- Node.js（推荐；用于部分 YouTube 签名解析，代码会自动查找 `nvm` 或 PATH 中的 `node`）
 
 ## 安装
 
 ```bash
-pip install spotifydl
-# 本地安装
 pip install -e .
 ```
 
-## 使用方法
+## 配置
 
-1. 设置必要的 API 凭证。在 `.env` 文件中配置以下内容：
+在项目根目录创建 `.env`：
 
-```
-# Spotify API 凭证（必需）
+```dotenv
 SPOTIFY_CLIENT_ID=your_spotify_client_id
 SPOTIFY_CLIENT_SECRET=your_spotify_client_secret
-
-# Deezer API 凭证（可选）
-DEEZER_API_KEY=your_deezer_api_key
-
-# SoundCloud API 凭证（可选）
-SOUNDCLOUD_CLIENT_ID=your_soundcloud_client_id
 ```
 
-2. 使用命令行下载音乐：
+## 使用
 
 ```bash
-spotifydl --url "https://open.spotify.com/track/your_track_id" -o "/path/to/output"
+spotifydl -u "https://open.spotify.com/track/..." -o "./music" -s youtubemusic
 ```
 
-### 参数说明
+常用参数：
 
-- `--url` 或 `-u`: Spotify 音乐链接（必需）
-- `--output` 或 `-o`: 输出目录路径（必需）
-- `--format` 或 `-f`: 输出格式（可选，默认为 mp3）
-- `--quality` 或 `-q`: 音频质量（可选，默认为 320k）
-- `--source` 或 `-s`: 指定音乐源（可选，可选值：deezer, youtubemusic, soundcloud, auto，默认为 youtubemusic）
-- `--cookies` 或 `-c`: Cookie文件路径（可选，用于YouTube验证）
-- `--cookies-from-browser`: 从浏览器导入cookies（可选，支持：chrome, firefox, edge, safari）
+- `-u, --url`：Spotify 单曲链接，必填。
+- `-o, --output`：输出目录，必填。
+- `-f, --format`：输出格式，默认 `mp3`。
+- `-q, --quality`：音频质量，默认 `320k`。
+- `-s, --source`：音乐源，建议使用默认的 `youtubemusic`。
+- `-c, --cookies`：YouTube cookies 文件路径。
+- `--cookies-from-browser`：从浏览器读取 cookies，例如 `chrome`、`firefox`、`edge`、`safari`。
 
-## 示例
+如何获取Spotify单曲链接？
+
+![如何获取 Spotify 单曲链接](assets/ScreenShot_2026-06-07_150521_670.png)
+
+
+
+如果遇到 YouTube 机器人验证，可尝试：
 
 ```bash
-# 下载单首歌曲（使用默认的YouTube Music源）
-spotifydl -u "https://open.spotify.com/track/4cOdK2wGLETKBW3PvgPWqT" -o "./music"
-
-# 指定使用 Deezer 源下载
-spotifydl -u "https://open.spotify.com/track/4cOdK2wGLETKBW3PvgPWqT" -o "./music" -s deezer
-
-# 指定使用 YouTube Music 源下载
-spotifydl -u "https://open.spotify.com/track/4cOdK2wGLETKBW3PvgPWqT" -o "./music" -s youtubemusic
-
-# 使用Chrome浏览器的cookies（解决YouTube机器人验证）
-spotifydl -u "https://open.spotify.com/track/4cOdK2wGLETKBW3PvgPWqT" -o "./music" --cookies-from-browser chrome
-
-# 使用cookie文件
-spotifydl -u "https://open.spotify.com/track/4cOdK2wGLETKBW3PvgPWqT" -o "./music" -c "/path/to/cookies.txt"
-
-# 指定输出格式和质量
-spotifydl -u "https://open.spotify.com/track/4cOdK2wGLETKBW3PvgPWqT" -o "./music" -f mp3 -q 320k
+spotifydl -u "https://open.spotify.com/track/..." -o "./music" --cookies-from-browser chrome
 ```
 
-## 音乐源说明
+或指定 cookies 文件：
 
-本工具支持多个音乐源：
+```bash
+spotifydl -u "https://open.spotify.com/track/..." -o "./music" -c "/path/to/cookies.txt"
+```
 
-1. Deezer（需要 API 凭证）
-   - 提供高质量音频
-   - 支持多种音频格式
-   - 需要 Deezer API 凭证
+## 批量下载
 
-2. YouTube Music（无需凭证）
-   - 提供高质量的官方音频
-   - 匹配度高，版本准确
-   - 无需额外API凭证
+项目提供了 `batch_dl.sh` 作为批量下载模板。编辑脚本里的 `TRACK_URLS` 数组，每行放一个 Spotify track 链接：
 
-3. SoundCloud（需要 API 凭证）
-   - 提供多种音质的音频
-   - 支持多种音频格式
-   - 需要 SoundCloud API 凭证
+```bash
+TRACK_URLS=(
+  "https://open.spotify.com/track/..."
+  "https://open.spotify.com/track/..."
+)
+```
 
-工具会根据指定的音乐源进行下载，或在自动模式下按优先级尝试可用的音乐源。匹配标准包括：
-- 歌曲标题
-- 艺术家名称
-- 歌曲时长
-- ISRC 码（如果可用）
+按需调整输出目录和下载源：
 
-## 注意事项
+```bash
+OUTPUT_DIR="${OUTPUT_DIR:-./music}"
+SOURCE="${SOURCE:-youtubemusic}"
+```
 
-- 本工具仅用于个人学习和研究使用
-- 请遵守相关法律法规和各音乐平台的服务条款
-- 下载的音乐仅供个人使用，请勿用于商业用途
-- 需要有效的 API 凭证才能使用相应的音乐源
-- 建议优先使用 Deezer 源，通常能提供最好的音质
+如果 YouTube 需要浏览器 cookies，可以运行时传入浏览器名：
+
+```bash
+COOKIES_FROM_BROWSER=chrome ./batch_dl.sh
+```
+
+首次运行前给脚本增加执行权限：
+
+```bash
+chmod +x batch_dl.sh
+./batch_dl.sh
+```
+
+## 输出
+
+下载完成后，文件名格式为：
+
+```text
+艺人 - 歌名.mp3
+```
+
+非法文件名字符会被替换为 `_`，同名文件会被覆盖。
 
 ## 许可证
 
-MIT License 
-
-## 解决YouTube机器人验证问题
-
-如果遇到 "Sign in to confirm you're not a bot" 错误，有以下几种解决方案：
-
-### 方法1：从浏览器导入cookies（推荐）
-```bash
-# 使用Chrome浏览器的cookies
-spotifydl -u "Spotify链接" -o "./music" --cookies-from-browser chrome
-
-# 使用Firefox浏览器的cookies
-spotifydl -u "Spotify链接" -o "./music" --cookies-from-browser firefox
-```
-
-### 方法2：使用cookie文件
-1. 从浏览器导出cookies到文件
-2. 使用 `--cookies` 参数指定文件路径：
-```bash
-spotifydl -u "Spotify链接" -o "./music" -c "/path/to/cookies.txt"
-``` 
+MIT License

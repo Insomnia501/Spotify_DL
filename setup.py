@@ -9,7 +9,6 @@ setup(
         "requests>=2.31.0",
         "spotipy>=2.23.0",
         "yt-dlp>=2023.11.16",
-        "ytmusicapi",
         "click>=8.1.7",
         "python-dotenv>=1.0.0",
         "mutagen",

@@ -6,8 +6,7 @@ import logging
 from typing import Optional, Dict, Any, List
 import requests
 from abc import ABC, abstractmethod
-import json
-from ytmusicapi import YTMusic
+
 from yt_dlp import YoutubeDL
 from mutagen.id3 import ID3, APIC, TIT2, TPE1, TALB, TDRC, TRCK
 from mutagen.mp3 import MP3
@@ -34,8 +33,6 @@ class MusicSource(ABC):
 class DeezerSource(MusicSource):
     def __init__(self):
         self.base_url = "https://api.deezer.com"
-        # 这里需要添加 Deezer API 凭证
-        self.api_key = os.getenv('DEEZER_API_KEY')
 
     def search_track(self, track_info: Dict[str, Any]) -> Optional[str]:
         try:
@@ -86,46 +83,49 @@ class SoundCloudSource(MusicSource):
         logger.warning("SoundCloud下载功能尚未完全实现。")
         return False
 
-class YouTubeMusicSource(MusicSource):
-    """YouTube Music音乐源"""
-    def __init__(self):
-        self.ytmusic = YTMusic()
+class YouTubeSource(MusicSource):
+    """YouTube音乐源（通过yt-dlp内置搜索，无需额外API认证）"""
 
     def search_track(self, track_info: Dict[str, Any]) -> Optional[str]:
+        """构建搜索查询字符串"""
         query = f"{track_info['name']} {track_info['artists'][0]}"
-        try:
-            search_results = self.ytmusic.search(query, filter="songs", limit=5)
-            
-            # 简单的匹配逻辑：选择第一个结果
-            if search_results:
-                best_match = None
-                highest_score = -1
+        return query
 
-                for result in search_results:
-                    score = 0
-                    # 检查标题匹配度
-                    if track_info['name'].lower() in result['title'].lower():
-                        score += 2
-                    
-                    # 检查艺术家匹配度
-                    if result.get('artists') and any(a['name'].lower() in artist.lower() for a in result['artists'] for artist in track_info['artists']):
-                        score += 2
+    def _find_best_match(self, entries: List[Dict], track_info: Dict[str, Any]) -> Optional[Dict]:
+        """从搜索结果中按多维度评分选出最佳匹配"""
+        target_duration = track_info['duration_ms'] / 1000
+        best_entry = None
+        best_score = -1
 
-                    # 检查时长匹配度 (允许10秒误差)
-                    if result.get('duration_seconds') and abs(result['duration_seconds'] - track_info['duration_ms'] / 1000) < 10:
-                        score += 3
-                    
-                    if score > highest_score:
-                        highest_score = score
-                        best_match = result
+        for entry in entries:
+            if not entry:
+                continue
+            score = 0
+            title = entry.get('title', '').lower()
+            uploader = (entry.get('uploader', '') + ' ' + entry.get('channel', '')).lower()
+            duration = entry.get('duration') or 0
 
-                if best_match:
-                    logger.info(f"在YouTube Music上找到匹配: {best_match['title']} - {[a['name'] for a in best_match['artists']]}")
-                    return f"https://music.youtube.com/watch?v={best_match['videoId']}"
+            # 标题匹配（+2）
+            if track_info['name'].lower() in title:
+                score += 2
+            # 艺术家匹配（标题或上传者中包含艺术家名 +2）
+            if any(a.lower() in title or a.lower() in uploader for a in track_info['artists']):
+                score += 2
+            # 时长匹配（10秒内 +3，30秒内 +1）
+            if duration:
+                diff = abs(duration - target_duration)
+                if diff < 10:
+                    score += 3
+                elif diff < 30:
+                    score += 1
 
-        except Exception as e:
-            logger.error(f"YouTube Music搜索失败: {str(e)}")
-        return None
+            if score > best_score:
+                best_score = score
+                best_entry = entry
+
+        if best_entry:
+            logger.info(f"最佳匹配: '{best_entry.get('title')}' (评分: {best_score}, 时长: {best_entry.get('duration')}s)")
+        return best_entry
 
     def _download_album_cover(self, track_info: Dict[str, Any]) -> Optional[str]:
         """下载专辑封面"""
@@ -133,7 +133,6 @@ class YouTubeMusicSource(MusicSource):
             if track_info.get('album_cover_url'):
                 response = requests.get(track_info['album_cover_url'])
                 if response.status_code == 200:
-                    # 创建临时文件保存封面
                     with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as temp_file:
                         temp_file.write(response.content)
                         return temp_file.name
@@ -149,71 +148,125 @@ class YouTubeMusicSource(MusicSource):
                 logger.warning(f"无法读取音频文件: {file_path}")
                 return
 
-            # 如果是MP3文件，使用ID3标签
             if isinstance(audio_file, MP3):
                 if audio_file.tags is None:
                     audio_file.add_tags()
-                
                 tags = audio_file.tags
-                tags.clear()  # 清除现有标签
-                
-                # 设置基本信息
-                tags.add(TIT2(encoding=3, text=track_info['name']))  # 标题
-                tags.add(TPE1(encoding=3, text=', '.join(track_info['artists'])))  # 艺术家
-                tags.add(TALB(encoding=3, text=track_info['album']))  # 专辑
-                
-                # 设置发行年份（如果有）
+                tags.clear()
+                tags.add(TIT2(encoding=3, text=track_info['name']))
+                tags.add(TPE1(encoding=3, text=', '.join(track_info['artists'])))
+                tags.add(TALB(encoding=3, text=track_info['album']))
                 if track_info.get('release_date'):
                     tags.add(TDRC(encoding=3, text=track_info['release_date'][:4]))
-                
-                # 设置曲目编号（如果有）
                 if track_info.get('track_number'):
                     tags.add(TRCK(encoding=3, text=str(track_info['track_number'])))
-                
-                # 添加专辑封面
                 if cover_path and os.path.exists(cover_path):
                     with open(cover_path, 'rb') as cover_file:
                         tags.add(APIC(
                             encoding=3,
                             mime='image/jpeg',
-                            type=3,  # Cover (front)
+                            type=3,
                             desc='Cover',
                             data=cover_file.read()
                         ))
-                
                 audio_file.save()
                 logger.info(f"已设置音频标签: {track_info['name']}")
-            
             else:
-                # 对于其他格式，使用通用标签
                 audio_file['TITLE'] = track_info['name']
                 audio_file['ARTIST'] = ', '.join(track_info['artists'])
                 audio_file['ALBUM'] = track_info['album']
                 if track_info.get('release_date'):
                     audio_file['DATE'] = track_info['release_date'][:4]
                 audio_file.save()
-                
+
         except Exception as e:
             logger.warning(f"设置音频标签失败: {str(e)}")
 
-    def download_track(self, url: str, output_path: str, format: str, quality: str, track_info: Dict[str, Any], 
-                      cookies: Optional[str] = None, cookies_from_browser: Optional[str] = None) -> bool:
+    def _create_safe_filename(self, track_info: Dict[str, Any]) -> str:
+        """创建安全的文件名"""
+        title = track_info['name']
+        artist = track_info['artists'][0] if track_info['artists'] else 'Unknown Artist'
+        filename = f"{artist} - {title}"
+        unsafe_chars = ['<', '>', ':', '"', '/', '\\', '|', '?', '*']
+        for char in unsafe_chars:
+            filename = filename.replace(char, '_')
+        return filename
+
+    def _get_js_runtimes(self) -> dict:
+        """自动检测可用的 JS 运行时，用于 yt-dlp EJS YouTube 签名解算"""
+        import shutil
+        import glob
+
+        # 优先查找 nvm 管理的 node（遍历所有版本）
+        nvm_node_pattern = os.path.expanduser('~/.nvm/versions/node/*/bin/node')
+        nvm_nodes = sorted(glob.glob(nvm_node_pattern), reverse=True)  # 最新版本优先
+        if nvm_nodes:
+            node_path = nvm_nodes[0]
+            logger.info(f"使用 nvm Node.js: {node_path}")
+            return {'node': {'path': node_path}}
+
+        # 其次在 PATH 中查找 node
+        node_in_path = shutil.which('node')
+        if node_in_path:
+            logger.info(f"使用系统 Node.js: {node_in_path}")
+            return {'node': {'path': node_in_path}}
+
+        # 最后回退到默认 deno（如果没安装任何运行时，留给 yt-dlp 自己报错）
+        logger.warning("未找到 Node.js，回退到 deno（若未安装 deno 则下载可能失败）")
+        return {'deno': {}}
+
+    def download_track(self, search_query: str, output_path: str, format: str, quality: str,
+                      track_info: Dict[str, Any], cookies: Optional[str] = None,
+                      cookies_from_browser: Optional[str] = None) -> bool:
         try:
-            # 确保输出路径是绝对路径
             output_path = os.path.abspath(os.path.expanduser(output_path))
-            
-            # 使用Spotify信息创建文件名
+
+            # ── 第一步：用 yt-dlp 搜索 YouTube，获取候选列表 ──
+            search_url = f"ytsearch5:{search_query}"
+            logger.info(f"在YouTube上搜索: {search_query}")
+
+            common_cookie_opts: Dict[str, Any] = {}
+            if cookies:
+                common_cookie_opts['cookiefile'] = cookies
+                logger.info(f"使用 cookies 文件: {cookies}")
+            elif cookies_from_browser:
+                common_cookie_opts['cookiesfrombrowser'] = (cookies_from_browser,)
+                logger.info(f"从浏览器导入 cookies: {cookies_from_browser}")
+
+            # ── 检测 Node.js 路径，供 yt-dlp EJS 签名解算使用 ──
+            js_runtimes = self._get_js_runtimes()
+
+            ydl_search_opts = {
+                'quiet': True,
+                'no_warnings': True,
+                'js_runtimes': js_runtimes,
+                **common_cookie_opts,
+            }
+
+            with YoutubeDL(ydl_search_opts) as ydl:
+                search_info = ydl.extract_info(search_url, download=False)
+
+            entries = (search_info.get('entries') or []) if search_info else []
+            if not entries:
+                logger.error("YouTube搜索未返回任何结果")
+                return False
+
+            # ── 第二步：评分选出最佳匹配 ──
+            best_entry = self._find_best_match(entries, track_info)
+            if not best_entry:
+                logger.error("未找到评分合格的匹配结果")
+                return False
+
+            video_url = best_entry.get('webpage_url') or f"https://www.youtube.com/watch?v={best_entry['id']}"
+            logger.info(f"使用视频: {video_url}")
+
+            # ── 第三步：下载音频并转码 ──
             safe_filename = self._create_safe_filename(track_info)
             final_output_path = os.path.join(output_path, f"{safe_filename}.{format}")
-            
-            # 使用一个更简单的临时文件命名策略
             temp_filename = f"temp_spotify_dl_{track_info['spotify_id']}"
             temp_output_template = os.path.join(output_path, f"{temp_filename}.%(ext)s")
-            
-            logger.info(f"输出目录: {output_path}")
-            logger.info(f"临时文件模板: {temp_output_template}")
-            
-            ydl_opts = {
+
+            ydl_dl_opts = {
                 'format': 'bestaudio/best',
                 'postprocessors': [{
                     'key': 'FFmpegExtractAudio',
@@ -224,135 +277,53 @@ class YouTubeMusicSource(MusicSource):
                 'quiet': False,
                 'no_warnings': False,
                 'keepvideo': False,
-                # 添加反检测措施
-                'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'referer': 'https://music.youtube.com/',
                 'extractor_retries': 3,
                 'fragment_retries': 3,
-                'retry_sleep': 2,
-                # HTTP headers
+                'js_runtimes': js_runtimes,
                 'http_headers': {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
                     'Accept-Language': 'en-us,en;q=0.5',
-                    'Accept-Encoding': 'gzip,deflate',
-                    'DNT': '1',
-                    'Connection': 'keep-alive',
-                    'Upgrade-Insecure-Requests': '1',
-                }
+                },
+                **common_cookie_opts,
             }
-            
-            # 添加 cookies 支持
-            if cookies:
-                ydl_opts['cookiefile'] = cookies
-                logger.info(f"使用 cookies 文件: {cookies}")
-            elif cookies_from_browser:
-                ydl_opts['cookiesfrombrowser'] = (cookies_from_browser,)
-                logger.info(f"从浏览器导入 cookies: {cookies_from_browser}")
-            
-            with YoutubeDL(ydl_opts) as ydl:
-                # 下载音频
-                info = ydl.extract_info(url, download=True)
-                logger.info("音频下载完成，开始处理文件...")
-                
-                # 预期的临时文件路径
-                temp_file_path = os.path.join(output_path, f"{temp_filename}.{format}")
-                logger.info(f"预期文件路径: {temp_file_path}")
-                
-                # 检查文件是否存在
-                if os.path.exists(temp_file_path):
-                    logger.info(f"找到下载的文件: {temp_file_path}")
-                    
-                    # 下载专辑封面
-                    cover_path = self._download_album_cover(track_info)
-                    if cover_path:
-                        logger.info("专辑封面下载成功")
-                    else:
-                        logger.warning("专辑封面下载失败")
-                    
-                    # 设置音频标签
-                    self._set_audio_tags(temp_file_path, track_info, cover_path)
-                    
-                    # 重命名文件为最终名称
-                    if os.path.exists(final_output_path):
-                        os.remove(final_output_path)  # 删除可能存在的同名文件
-                    
-                    os.rename(temp_file_path, final_output_path)
-                    logger.info(f"文件已重命名为: {final_output_path}")
-                    
-                    # 清理临时封面文件
-                    if cover_path and os.path.exists(cover_path):
-                        os.remove(cover_path)
-                        logger.info("临时封面文件已清理")
-                    
-                    logger.info(f"下载完成并已设置标签: {safe_filename}.{format}")
-                    return True
-                else:
-                    # 如果预期的文件不存在，尝试查找所有可能的文件
-                    logger.warning(f"预期文件不存在: {temp_file_path}")
-                    logger.info("正在查找下载的文件...")
-                    
-                    # 列出目录中的所有文件
-                    try:
-                        all_files = os.listdir(output_path)
-                        logger.info(f"目录中的所有文件: {all_files}")
-                    except Exception as e:
-                        logger.error(f"无法列出目录文件: {e}")
-                        return False
-                    
-                    found_files = []
-                    for file in all_files:
-                        file_path = os.path.join(output_path, file)
-                        logger.info(f"检查文件: {file}")
-                        if file.endswith(f'.{format}') and temp_filename in file:
-                            found_files.append(file_path)
-                            logger.info(f"匹配的文件: {file_path}")
-                    
-                    if found_files:
-                        # 使用找到的第一个文件
-                        temp_file_path = found_files[0]
-                        logger.info(f"使用找到的文件: {temp_file_path}")
-                        
-                        # 下载专辑封面
-                        cover_path = self._download_album_cover(track_info)
-                        
-                        # 设置音频标签
-                        self._set_audio_tags(temp_file_path, track_info, cover_path)
-                        
-                        # 重命名文件为最终名称
-                        if os.path.exists(final_output_path):
-                            os.remove(final_output_path)
-                        
-                        os.rename(temp_file_path, final_output_path)
-                        
-                        # 清理临时封面文件
-                        if cover_path and os.path.exists(cover_path):
-                            os.remove(cover_path)
-                        
-                        logger.info(f"下载完成并已设置标签: {safe_filename}.{format}")
-                        return True
-                    else:
-                        logger.error("无法找到下载的音频文件")
-                        return False
-            
+
+            with YoutubeDL(ydl_dl_opts) as ydl:
+                ydl.download([video_url])
+
+            logger.info("音频下载完成，开始处理文件...")
+
+            # ── 第四步：找到临时文件，写标签，重命名 ──
+            temp_file_path = os.path.join(output_path, f"{temp_filename}.{format}")
+            if not os.path.exists(temp_file_path):
+                # 容错：查找前缀匹配的文件
+                matched = [
+                    os.path.join(output_path, f)
+                    for f in os.listdir(output_path)
+                    if f.startswith(temp_filename) and f.endswith(f'.{format}')
+                ]
+                if not matched:
+                    logger.error("无法找到下载的音频文件")
+                    return False
+                temp_file_path = matched[0]
+
+            cover_path = self._download_album_cover(track_info)
+            self._set_audio_tags(temp_file_path, track_info, cover_path)
+
+            if os.path.exists(final_output_path):
+                os.remove(final_output_path)
+            os.rename(temp_file_path, final_output_path)
+
+            if cover_path and os.path.exists(cover_path):
+                os.remove(cover_path)
+
+            logger.info(f"下载完成并已设置标签: {safe_filename}.{format}")
+            return True
+
         except Exception as e:
-            logger.error(f"使用yt-dlp从YouTube Music下载失败: {str(e)}")
+            logger.error(f"使用yt-dlp从YouTube下载失败: {str(e)}")
             import traceback
             logger.error(f"详细错误信息: {traceback.format_exc()}")
             return False
-
-    def _create_safe_filename(self, track_info: Dict[str, Any]) -> str:
-        """创建安全的文件名"""
-        title = track_info['name']
-        artist = track_info['artists'][0] if track_info['artists'] else 'Unknown Artist'
-        filename = f"{artist} - {title}"
-        
-        # 移除不安全的字符
-        unsafe_chars = ['<', '>', ':', '"', '/', '\\', '|', '?', '*']
-        for char in unsafe_chars:
-            filename = filename.replace(char, '_')
-        
-        return filename
 
 class SpotifyDownloader:
     def __init__(self, client_id: str, client_secret: str):
@@ -366,7 +337,7 @@ class SpotifyDownloader:
         # 初始化音乐源列表
         self.sources: List[MusicSource] = [
             DeezerSource(),
-            YouTubeMusicSource(),
+            YouTubeSource(),
             SoundCloudSource(),
             # 可以添加更多音乐源
         ]
@@ -454,7 +425,7 @@ class SpotifyDownloader:
             elif source == 'deezer':
                 sources_to_try = [s for s in self.sources if isinstance(s, DeezerSource)]
             elif source == 'youtubemusic':
-                sources_to_try = [s for s in self.sources if isinstance(s, YouTubeMusicSource)]
+                sources_to_try = [s for s in self.sources if isinstance(s, YouTubeSource)]
             elif source == 'soundcloud':
                 sources_to_try = [s for s in self.sources if isinstance(s, SoundCloudSource)]
             else:
