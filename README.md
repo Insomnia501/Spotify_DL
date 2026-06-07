@@ -37,7 +37,7 @@ SPOTIFY_CLIENT_ID=your_spotify_client_id
 SPOTIFY_CLIENT_SECRET=your_spotify_client_secret
 ```
 
-获取 `SPOTIFY_CLIENT_ID` 和 `SPOTIFY_CLIENT_SECRET`：
+如何获取 `SPOTIFY_CLIENT_ID` 和 `SPOTIFY_CLIENT_SECRET`？
 
 1. 打开 [Spotify Developer Dashboard](https://developer.spotify.com/dashboard)，使用 Spotify 账号登录。
 2. 点击 `Create app` 创建应用，填写应用名称和描述。
