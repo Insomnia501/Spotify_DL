@@ -8,6 +8,7 @@ build/
 develop-eggs/
 dist/
 downloads/
+web_downloads/
 eggs/
 .eggs/
 lib/
@@ -54,6 +55,8 @@ htmlcov/
 coverage/
 .cache
 .cache/
+.server.pid
+.server.log
 
 # 下载的音乐文件
 *.mp3

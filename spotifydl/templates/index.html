@@ -1,0 +1,344 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>SpotifyDL</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f7f7f4;
+        --panel: #ffffff;
+        --text: #1f2520;
+        --muted: #68706a;
+        --line: #d9ddd7;
+        --accent: #1db954;
+        --accent-dark: #14863d;
+        --error: #b42318;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      main {
+        width: min(920px, calc(100vw - 32px));
+        margin: 40px auto;
+      }
+
+      h1 {
+        margin: 0 0 20px;
+        font-size: 28px;
+        font-weight: 700;
+      }
+
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 20px;
+      }
+
+      label {
+        display: block;
+        margin-bottom: 8px;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      textarea,
+      input {
+        width: 100%;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 12px;
+        color: var(--text);
+        font: inherit;
+        background: #fff;
+      }
+
+      textarea {
+        min-height: 180px;
+        resize: vertical;
+      }
+
+      .row {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 12px;
+        align-items: end;
+        margin-top: 14px;
+      }
+
+      button {
+        min-width: 124px;
+        height: 44px;
+        border: 0;
+        border-radius: 8px;
+        background: var(--accent);
+        color: #fff;
+        font: inherit;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
+      button:disabled {
+        cursor: not-allowed;
+        opacity: 0.6;
+      }
+
+      button:hover:not(:disabled) {
+        background: var(--accent-dark);
+      }
+
+      .status {
+        margin-top: 18px;
+        color: var(--muted);
+      }
+
+      .items {
+        margin-top: 16px;
+        display: grid;
+        gap: 8px;
+      }
+
+      .item {
+        display: grid;
+        grid-template-columns: 92px 1fr auto;
+        gap: 10px;
+        align-items: center;
+        min-height: 44px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 10px;
+        background: #fff;
+      }
+
+      .badge {
+        display: inline-flex;
+        justify-content: center;
+        border-radius: 999px;
+        padding: 4px 8px;
+        background: #eef1ed;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .badge.done {
+        background: #ddf4e6;
+        color: #11682f;
+      }
+
+      .badge.failed {
+        background: #ffe5e1;
+        color: var(--error);
+      }
+
+      a {
+        color: var(--accent-dark);
+        font-weight: 700;
+        text-decoration: none;
+      }
+
+      .url,
+      .error {
+        overflow-wrap: anywhere;
+      }
+
+      .error {
+        color: var(--error);
+        font-size: 13px;
+        margin-top: 4px;
+      }
+
+      .actions {
+        margin-top: 16px;
+      }
+
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+      }
+
+      @media (max-width: 680px) {
+        main {
+          margin: 24px auto;
+        }
+
+        .row,
+        .item {
+          grid-template-columns: 1fr;
+        }
+
+        button {
+          width: 100%;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>SpotifyDL</h1>
+      <form id="download-form" class="panel">
+        <label for="urls">Spotify track 链接，最多 {{ max_links }} 个</label>
+        <textarea id="urls" placeholder="https://open.spotify.com/track/..."></textarea>
+
+        <div class="row">
+          <div>
+            <label class="sr-only" for="username">用户名</label>
+            <input id="username" class="sr-only" type="text" autocomplete="username" value="spotifydl">
+            <label for="password">访问密码{% if not password_required %}（未启用）{% endif %}</label>
+            <input id="password" type="password" autocomplete="current-password">
+          </div>
+          <button id="submit" type="submit">下载</button>
+        </div>
+
+        <div id="status" class="status"></div>
+        <div id="actions" class="actions"></div>
+        <div id="items" class="items"></div>
+      </form>
+    </main>
+
+    <script>
+      const submitButton = document.querySelector("#submit");
+      const downloadForm = document.querySelector("#download-form");
+      const urlsInput = document.querySelector("#urls");
+      const passwordInput = document.querySelector("#password");
+      const statusEl = document.querySelector("#status");
+      const actionsEl = document.querySelector("#actions");
+      const itemsEl = document.querySelector("#items");
+      const apiOrigin = window.location.protocol === "file:" ? "http://127.0.0.1:8000" : window.location.origin;
+      let currentTaskId = null;
+      let pollTimer = null;
+
+      function headers() {
+        const value = passwordInput.value.trim();
+        const result = {"Content-Type": "application/json"};
+        if (value) result["X-Access-Password"] = value;
+        return result;
+      }
+
+      function fileUrl(taskId, fileName) {
+        const base = `${apiOrigin}/files/${encodeURIComponent(taskId)}/${encodeURIComponent(fileName)}`;
+        const password = passwordInput.value.trim();
+        if (!password) return base;
+        return `${base}?access_password=${encodeURIComponent(password)}`;
+      }
+
+      async function requestJson(path, options = {}) {
+        try {
+          const response = await fetch(`${apiOrigin}${path}`, options);
+          const text = await response.text();
+          const data = text ? JSON.parse(text) : {};
+          if (!response.ok) throw new Error(data.detail || `请求失败：${response.status}`);
+          return data;
+        } catch (error) {
+          if (error instanceof TypeError) {
+            throw new Error(`无法连接 Web 服务。请确认页面从 ${apiOrigin} 打开，并且 uvicorn 服务正在运行。`);
+          }
+          throw error;
+        }
+      }
+
+      function renderTask(task) {
+        statusEl.textContent = `状态：${task.status}，完成 ${task.done}/${task.total}，失败 ${task.failed}`;
+        actionsEl.innerHTML = "";
+        if (task.zip_file) {
+          const link = document.createElement("a");
+          link.href = fileUrl(task.id, task.zip_file);
+          link.textContent = "下载全部 zip";
+          actionsEl.appendChild(link);
+        }
+
+        itemsEl.innerHTML = "";
+        for (const item of task.items) {
+          const row = document.createElement("div");
+          row.className = "item";
+
+          const badge = document.createElement("span");
+          badge.className = `badge ${item.status}`;
+          badge.textContent = item.status;
+          row.appendChild(badge);
+
+          const text = document.createElement("div");
+          const url = document.createElement("div");
+          url.className = "url";
+          url.textContent = item.url;
+          text.appendChild(url);
+          if (item.error) {
+            const error = document.createElement("div");
+            error.className = "error";
+            error.textContent = item.error;
+            text.appendChild(error);
+          }
+          row.appendChild(text);
+
+          const action = document.createElement("div");
+          if (item.file) {
+            const link = document.createElement("a");
+            link.href = fileUrl(task.id, item.file);
+            link.textContent = "下载";
+            action.appendChild(link);
+          }
+          row.appendChild(action);
+          itemsEl.appendChild(row);
+        }
+      }
+
+      async function pollTask() {
+        if (!currentTaskId) return;
+        const data = await requestJson(`/api/tasks/${currentTaskId}`, {headers: headers()});
+        renderTask(data);
+        if (data.status === "done" || data.status === "failed") {
+          clearInterval(pollTimer);
+          pollTimer = null;
+          submitButton.disabled = false;
+        }
+      }
+
+      downloadForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const urls = urlsInput.value.split(/\n+/).map((value) => value.trim()).filter(Boolean);
+        statusEl.textContent = "";
+        actionsEl.innerHTML = "";
+        itemsEl.innerHTML = "";
+        submitButton.disabled = true;
+
+        try {
+          const data = await requestJson("/api/tasks", {
+            method: "POST",
+            headers: headers(),
+            body: JSON.stringify({urls})
+          });
+          currentTaskId = data.id;
+          renderTask(data);
+          clearInterval(pollTimer);
+          pollTimer = setInterval(() => pollTask().catch((error) => {
+            statusEl.textContent = error.message;
+            submitButton.disabled = false;
+            clearInterval(pollTimer);
+            pollTimer = null;
+          }), 2000);
+          await pollTask();
+        } catch (error) {
+          statusEl.textContent = error.message;
+          submitButton.disabled = false;
+        }
+      });
+    </script>
+  </body>
+</html>

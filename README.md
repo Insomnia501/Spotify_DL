@@ -35,6 +35,9 @@ pip install -e .
 ```dotenv
 SPOTIFY_CLIENT_ID=your_spotify_client_id
 SPOTIFY_CLIENT_SECRET=your_spotify_client_secret
+
+# Web 版访问密码，部署到服务器时建议设置
+SPOTIFYDL_WEB_PASSWORD=your_web_password
 ```
 
 如何获取 `SPOTIFY_CLIENT_ID` 和 `SPOTIFY_CLIENT_SECRET`？
@@ -47,6 +50,32 @@ SPOTIFY_CLIENT_SECRET=your_spotify_client_secret
 Spotify 官方说明见 [Apps | Spotify for Developers](https://developer.spotify.com/documentation/web-api/concepts/apps)。
 
 ![获取 Spotify Client ID 和 Secret](assets/2.png)
+
+## Web 版
+
+启动本地 Web 服务：
+
+```bash
+uvicorn spotifydl.web:app --host 127.0.0.1 --port 8000
+```
+
+打开 `http://127.0.0.1:8000`，粘贴一个或多个 Spotify track 链接后点击下载。任务完成后可下载单首歌曲，也可以下载全部歌曲的 zip 包。
+
+Web 版配置项：
+
+- `SPOTIFYDL_WEB_PASSWORD`：访问密码。部署到公网服务器时建议设置。
+- `SPOTIFYDL_WEB_MAX_LINKS`：单次最多链接数，默认 `20`。
+- `SPOTIFYDL_WEB_TASK_TTL_SECONDS`：下载文件保留时间，默认 `86400` 秒。
+- `SPOTIFYDL_WEB_WORKERS`：后台下载任务并发数，默认 `2`。
+- `SPOTIFYDL_COOKIES_FILE`：服务器上的 YouTube cookies 文件路径，可用于处理 YouTube 验证。
+
+下载文件会保存在项目内的 `web_downloads/`，该目录已被 git 忽略。
+
+如果页面提示无法连接 Web 服务或 `Failed to fetch`：
+
+1. 确认服务正在运行：`uvicorn spotifydl.web:app --host 127.0.0.1 --port 8000`。
+2. 确认浏览器打开的是 `http://127.0.0.1:8000`，不要直接打开 HTML 文件。
+3. 修改前端代码后刷新页面；必要时用浏览器强制刷新清理旧脚本缓存。
 
 ## 使用
 
