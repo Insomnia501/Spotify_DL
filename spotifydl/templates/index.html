@@ -3,15 +3,14 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>SpotifyDL</title>
+    <title>SpotifyDownloader</title>
     <style>
       :root {
         color-scheme: light;
-        --bg: #f7f7f4;
-        --panel: #ffffff;
+        --panel: rgba(255, 255, 255, 0.92);
         --text: #1f2520;
         --muted: #68706a;
-        --line: #d9ddd7;
+        --line: rgba(31, 37, 32, 0.18);
         --accent: #1db954;
         --accent-dark: #14863d;
         --error: #b42318;
@@ -23,7 +22,10 @@
 
       body {
         margin: 0;
-        background: var(--bg);
+        min-height: 100vh;
+        background:
+          linear-gradient(rgba(8, 12, 10, 0.28), rgba(8, 12, 10, 0.42)),
+          url("/assets/background.webp") center / cover fixed;
         color: var(--text);
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       }
@@ -35,8 +37,10 @@
 
       h1 {
         margin: 0 0 20px;
+        color: #fff;
         font-size: 28px;
         font-weight: 700;
+        text-shadow: 0 2px 14px rgba(0, 0, 0, 0.35);
       }
 
       .panel {
@@ -44,6 +48,8 @@
         border: 1px solid var(--line);
         border-radius: 8px;
         padding: 20px;
+        box-shadow: 0 18px 60px rgba(0, 0, 0, 0.22);
+        backdrop-filter: blur(10px);
       }
 
       label {
@@ -51,6 +57,36 @@
         margin-bottom: 8px;
         color: var(--muted);
         font-size: 14px;
+      }
+
+      .input-label {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 10px;
+      }
+
+      .field-hint {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .enter-icon {
+        display: inline-grid;
+        place-items: center;
+        width: 24px;
+        height: 22px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: rgba(255, 255, 255, 0.82);
+        color: var(--text);
+        font-size: 15px;
+        font-weight: 700;
+        line-height: 1;
       }
 
       textarea,
@@ -192,9 +228,15 @@
   </head>
   <body>
     <main>
-      <h1>SpotifyDL</h1>
+      <h1>SpotifyDownloader</h1>
       <form id="download-form" class="panel">
-        <label for="urls">Spotify track 链接，最多 {{ max_links }} 个</label>
+        <label for="urls" class="input-label">
+          <span>Spotify track 链接，最多 {{ max_links }} 个</span>
+          <span class="field-hint">
+            <span>每个链接之间需要回车</span>
+            <span class="enter-icon" aria-label="回车键图标" title="回车">↵</span>
+          </span>
+        </label>
         <textarea id="urls" placeholder="https://open.spotify.com/track/..."></textarea>
 
         <div class="row">

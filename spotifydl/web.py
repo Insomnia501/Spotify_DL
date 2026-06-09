@@ -11,6 +11,7 @@ from typing import Dict, List, Optional
 from dotenv import load_dotenv
 from fastapi import FastAPI, Header, HTTPException, Query
 from fastapi.responses import FileResponse, HTMLResponse, Response
+from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
@@ -20,9 +21,10 @@ load_dotenv()
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DOWNLOAD_ROOT = PROJECT_ROOT / "web_downloads"
+ASSETS_DIR = PROJECT_ROOT / "assets"
 TEMPLATE_DIR = Path(__file__).resolve().parent / "templates"
 
-MAX_LINKS = int(os.getenv("SPOTIFYDL_WEB_MAX_LINKS", "20"))
+MAX_LINKS = int(os.getenv("SPOTIFYDL_WEB_MAX_LINKS", "10"))
 TASK_TTL_SECONDS = int(os.getenv("SPOTIFYDL_WEB_TASK_TTL_SECONDS", str(24 * 60 * 60)))
 MAX_WORKERS = int(os.getenv("SPOTIFYDL_WEB_WORKERS", "2"))
 WEB_PASSWORD = os.getenv("SPOTIFYDL_WEB_PASSWORD", "")
@@ -33,7 +35,8 @@ COOKIES_FILE = os.getenv("SPOTIFYDL_COOKIES_FILE")
 
 DOWNLOAD_ROOT.mkdir(parents=True, exist_ok=True)
 
-app = FastAPI(title="SpotifyDL Web")
+app = FastAPI(title="SpotifyDownloader Web")
+app.mount("/assets", StaticFiles(directory=str(ASSETS_DIR)), name="assets")
 templates = Jinja2Templates(directory=str(TEMPLATE_DIR))
 executor = ThreadPoolExecutor(max_workers=MAX_WORKERS)
 tasks: Dict[str, Dict] = {}
@@ -70,7 +73,7 @@ def _validate_urls(urls: List[str]) -> List[str]:
         raise HTTPException(status_code=400, detail=f"一次最多支持 {MAX_LINKS} 个链接")
     invalid = [url for url in cleaned if "open.spotify.com/track/" not in url]
     if invalid:
-        raise HTTPException(status_code=400, detail="仅支持 Spotify track 链接")
+        raise HTTPException(status_code=400, detail="链接格式有误，请输入 Spotify track 链接")
     return cleaned
 
 

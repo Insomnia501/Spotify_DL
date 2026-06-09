@@ -77,7 +77,7 @@ python -m uvicorn spotifydl.web:app --host 127.0.0.1 --port 8000
 Web 版配置项：
 
 - `SPOTIFYDL_WEB_PASSWORD`：访问密码。部署到公网服务器时建议设置。
-- `SPOTIFYDL_WEB_MAX_LINKS`：单次最多链接数，默认 `20`。
+- `SPOTIFYDL_WEB_MAX_LINKS`：单次最多链接数，默认 `10`。
 - `SPOTIFYDL_WEB_TASK_TTL_SECONDS`：下载文件保留时间，默认 `86400` 秒。
 - `SPOTIFYDL_WEB_WORKERS`：后台下载任务并发数，默认 `2`。
 - `SPOTIFYDL_WEB_SOURCE`：下载源，默认 `youtubemusic`。
