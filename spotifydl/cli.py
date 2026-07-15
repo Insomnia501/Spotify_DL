@@ -42,7 +42,7 @@ def main(url: str, output: str, format: str, quality: str, source: str, cookies:
         if downloader.download(url, output, format, quality, source, cookies, cookies_from_browser):
             logger.info("下载成功完成！")
         else:
-            logger.error("下载失败。")
+            logger.error("下载失败：%s", downloader.last_error or "未知错误")
             exit(1)
             
     except Exception as e:

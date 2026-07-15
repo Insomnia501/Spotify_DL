@@ -1,0 +1,10 @@
+.git
+.env
+venv
+web_downloads
+web_cache
+secrets
+__pycache__
+*.py[cod]
+*.egg-info
+.DS_Store

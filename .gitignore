@@ -9,6 +9,8 @@ develop-eggs/
 dist/
 downloads/
 web_downloads/
+web_cache/
+secrets/
 eggs/
 .eggs/
 lib/

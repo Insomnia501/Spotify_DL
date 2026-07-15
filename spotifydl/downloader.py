@@ -1,6 +1,8 @@
 import os
 import re
 import spotipy
+import threading
+import time
 from spotipy.oauth2 import SpotifyClientCredentials
 import logging
 from typing import Optional, Dict, Any, List
@@ -16,6 +18,76 @@ import tempfile
 # 配置日志
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+
+class YouTubeDownloadError(RuntimeError):
+    """带分类的 YouTube 下载错误，供 Web 层显示可执行的失败原因。"""
+
+    def __init__(self, code: str, message: str):
+        super().__init__(message)
+        self.code = code
+
+
+class YouTubeCircuitBreaker:
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._failure_count = 0
+        self._open_until = 0.0
+
+    def check(self):
+        with self._lock:
+            remaining = self._open_until - time.time()
+        if remaining > 0:
+            raise YouTubeDownloadError(
+                "circuit_open",
+                f"YouTube 暂时限制了服务器请求，请约 {max(1, int(remaining / 60) + 1)} 分钟后重试",
+            )
+
+    def record_success(self):
+        with self._lock:
+            self._failure_count = 0
+            self._open_until = 0.0
+
+    def record_failure(self, code: str):
+        if code not in {"bot_check", "forbidden", "rate_limited"}:
+            return
+        threshold = max(1, int(os.getenv("SPOTIFYDL_YOUTUBE_BREAKER_THRESHOLD", "3")))
+        cooldown = max(60, int(os.getenv("SPOTIFYDL_YOUTUBE_BREAKER_COOLDOWN_SECONDS", "900")))
+        with self._lock:
+            self._failure_count += 1
+            if self._failure_count >= threshold:
+                self._open_until = time.time() + cooldown
+                self._failure_count = 0
+                logger.warning("YouTube 熔断已开启，冷却 %s 秒", cooldown)
+
+    def status(self) -> Dict[str, Any]:
+        with self._lock:
+            remaining = max(0, int(self._open_until - time.time()))
+            return {
+                "status": "open" if remaining else "closed",
+                "cooldown_remaining_seconds": remaining,
+                "recent_failures": self._failure_count,
+            }
+
+
+_youtube_breaker = YouTubeCircuitBreaker()
+_youtube_rate_lock = threading.Lock()
+_last_youtube_attempt = 0.0
+
+
+def _wait_for_youtube_rate_slot():
+    """限制歌曲级请求启动频率，避免并发任务同时冲击 YouTube。"""
+    global _last_youtube_attempt
+    interval = max(0.0, float(os.getenv("SPOTIFYDL_YOUTUBE_MIN_INTERVAL_SECONDS", "2")))
+    with _youtube_rate_lock:
+        wait_seconds = interval - (time.monotonic() - _last_youtube_attempt)
+        if wait_seconds > 0:
+            time.sleep(wait_seconds)
+        _last_youtube_attempt = time.monotonic()
+
+
+def get_youtube_health() -> Dict[str, Any]:
+    return _youtube_breaker.status()
 
 class MusicSource(ABC):
     """音乐源抽象基类"""
@@ -86,6 +158,10 @@ class SoundCloudSource(MusicSource):
 class YouTubeSource(MusicSource):
     """YouTube音乐源（通过yt-dlp内置搜索，无需额外API认证）"""
 
+    def __init__(self):
+        self.last_error: Optional[YouTubeDownloadError] = None
+        self.last_output_path: Optional[str] = None
+
     def search_track(self, track_info: Dict[str, Any]) -> Optional[str]:
         """构建搜索查询字符串"""
         query = f"{track_info['name']} {track_info['artists'][0]}"
@@ -123,9 +199,12 @@ class YouTubeSource(MusicSource):
                 best_score = score
                 best_entry = entry
 
-        if best_entry:
+        minimum_score = max(1, int(os.getenv("SPOTIFYDL_YOUTUBE_MIN_MATCH_SCORE", "4")))
+        if best_entry and best_score >= minimum_score:
             logger.info(f"最佳匹配: '{best_entry.get('title')}' (评分: {best_score}, 时长: {best_entry.get('duration')}s)")
-        return best_entry
+            return best_entry
+        logger.warning("YouTube 最佳候选评分 %s，低于最低要求 %s", best_score, minimum_score)
+        return None
 
     def _download_album_cover(self, track_info: Dict[str, Any]) -> Optional[str]:
         """下载专辑封面"""
@@ -215,119 +294,200 @@ class YouTubeSource(MusicSource):
         logger.warning("未找到 Node.js，回退到 deno（若未安装 deno 则下载可能失败）")
         return {'deno': {}}
 
-    def download_track(self, search_query: str, output_path: str, format: str, quality: str,
-                      track_info: Dict[str, Any], cookies: Optional[str] = None,
-                      cookies_from_browser: Optional[str] = None) -> bool:
+    def _get_extractor_options(self) -> Dict[str, Any]:
+        provider_url = os.getenv("SPOTIFYDL_POT_PROVIDER_URL", "").strip()
+        if not provider_url:
+            return {}
+        return {
+            "extractor_args": {
+                "youtube": {"player_client": ["mweb"]},
+                "youtubepot-bgutilhttp": {"base_url": [provider_url]},
+            }
+        }
+
+    def _get_cookie_options(
+        self,
+        cookies: Optional[str],
+        cookies_from_browser: Optional[str],
+    ) -> Dict[str, Any]:
+        if cookies:
+            cookie_path = os.path.abspath(os.path.expanduser(cookies))
+            if not os.path.isfile(cookie_path):
+                raise YouTubeDownloadError("cookies_invalid", "服务器上的 YouTube Cookies 文件不存在")
+            logger.info("登录受限内容使用备用 Cookies 文件: %s", cookie_path)
+            return {"cookiefile": cookie_path}
+        if cookies_from_browser:
+            logger.info("登录受限内容从浏览器导入备用 Cookies: %s", cookies_from_browser)
+            return {"cookiesfrombrowser": (cookies_from_browser,)}
+        return {}
+
+    def _classify_error(self, error: Exception) -> YouTubeDownloadError:
+        if isinstance(error, YouTubeDownloadError):
+            return error
+
+        raw_message = str(error)
+        message = raw_message.lower()
+        if "429" in message or "too many requests" in message:
+            return YouTubeDownloadError("rate_limited", "YouTube 请求过于频繁，服务器已进入冷却")
+        if "confirm you're not a bot" in message or "confirm you’re not a bot" in message or "captcha" in message:
+            return YouTubeDownloadError("bot_check", "YouTube 要求机器人验证，请稍后重试")
+        if "403" in message or "forbidden" in message:
+            return YouTubeDownloadError("forbidden", "YouTube 拒绝了服务器请求，请稍后重试")
+
+        auth_markers = (
+            "age-restricted",
+            "age restricted",
+            "confirm your age",
+            "members-only",
+            "members only",
+            "private video",
+            "login required",
+            "authentication required",
+        )
+        if any(marker in message for marker in auth_markers):
+            return YouTubeDownloadError("auth_required", "该 YouTube 内容需要登录验证")
+        if "cookie" in message:
+            return YouTubeDownloadError("cookies_invalid", "备用 YouTube Cookies 已失效或格式不正确")
+        if "timed out" in message or "temporary failure" in message or "network is unreachable" in message:
+            return YouTubeDownloadError("network", "连接 YouTube 失败，请稍后重试")
+        return YouTubeDownloadError("download_failed", f"YouTube 下载失败: {raw_message}")
+
+    def _cleanup_temporary_files(self, output_path: str, spotify_id: str):
+        prefix = f"temp_spotify_dl_{spotify_id}"
+        for name in os.listdir(output_path):
+            if name.startswith(prefix):
+                try:
+                    os.remove(os.path.join(output_path, name))
+                except OSError:
+                    logger.warning("无法清理临时文件: %s", name)
+
+    def _download_attempt(
+        self,
+        search_query: str,
+        output_path: str,
+        format: str,
+        quality: str,
+        track_info: Dict[str, Any],
+        auth_options: Dict[str, Any],
+    ) -> str:
+        search_url = f"ytsearch5:{search_query}"
+        logger.info("在 YouTube 上搜索: %s", search_query)
+        js_runtimes = self._get_js_runtimes()
+        extractor_options = self._get_extractor_options()
+
+        ydl_search_opts = {
+            "quiet": True,
+            "no_warnings": True,
+            "js_runtimes": js_runtimes,
+            **extractor_options,
+            **auth_options,
+        }
+        with YoutubeDL(ydl_search_opts) as ydl:
+            search_info = ydl.extract_info(search_url, download=False)
+
+        entries = (search_info.get("entries") or []) if search_info else []
+        if not entries:
+            raise YouTubeDownloadError("no_results", "YouTube 搜索未返回结果")
+
+        best_entry = self._find_best_match(entries, track_info)
+        if not best_entry:
+            raise YouTubeDownloadError("no_match", "未找到可信度足够的歌曲匹配")
+
+        video_url = best_entry.get("webpage_url") or f"https://www.youtube.com/watch?v={best_entry['id']}"
+        logger.info("使用视频: %s", video_url)
+        safe_filename = self._create_safe_filename(track_info)
+        final_output_path = os.path.join(output_path, f"{safe_filename}.{format}")
+        temp_filename = f"temp_spotify_dl_{track_info['spotify_id']}"
+        temp_output_template = os.path.join(output_path, f"{temp_filename}.%(ext)s")
+
+        ydl_dl_opts = {
+            "format": "bestaudio/best",
+            "postprocessors": [{
+                "key": "FFmpegExtractAudio",
+                "preferredcodec": format,
+                "preferredquality": quality,
+            }],
+            "outtmpl": temp_output_template,
+            "quiet": False,
+            "no_warnings": False,
+            "keepvideo": False,
+            "extractor_retries": 1,
+            "fragment_retries": 1,
+            "js_runtimes": js_runtimes,
+            "http_headers": {"Accept-Language": "en-us,en;q=0.5"},
+            **extractor_options,
+            **auth_options,
+        }
+        with YoutubeDL(ydl_dl_opts) as ydl:
+            ydl.download([video_url])
+
+        temp_file_path = os.path.join(output_path, f"{temp_filename}.{format}")
+        if not os.path.exists(temp_file_path):
+            matched = [
+                os.path.join(output_path, name)
+                for name in os.listdir(output_path)
+                if name.startswith(temp_filename) and name.endswith(f".{format}")
+            ]
+            if not matched:
+                raise YouTubeDownloadError("output_missing", "下载完成但未找到音频文件")
+            temp_file_path = matched[0]
+
+        cover_path = self._download_album_cover(track_info)
         try:
-            output_path = os.path.abspath(os.path.expanduser(output_path))
-
-            # ── 第一步：用 yt-dlp 搜索 YouTube，获取候选列表 ──
-            search_url = f"ytsearch5:{search_query}"
-            logger.info(f"在YouTube上搜索: {search_query}")
-
-            common_cookie_opts: Dict[str, Any] = {}
-            if cookies:
-                common_cookie_opts['cookiefile'] = cookies
-                logger.info(f"使用 cookies 文件: {cookies}")
-            elif cookies_from_browser:
-                common_cookie_opts['cookiesfrombrowser'] = (cookies_from_browser,)
-                logger.info(f"从浏览器导入 cookies: {cookies_from_browser}")
-
-            # ── 检测 Node.js 路径，供 yt-dlp EJS 签名解算使用 ──
-            js_runtimes = self._get_js_runtimes()
-
-            ydl_search_opts = {
-                'quiet': True,
-                'no_warnings': True,
-                'js_runtimes': js_runtimes,
-                **common_cookie_opts,
-            }
-
-            with YoutubeDL(ydl_search_opts) as ydl:
-                search_info = ydl.extract_info(search_url, download=False)
-
-            entries = (search_info.get('entries') or []) if search_info else []
-            if not entries:
-                logger.error("YouTube搜索未返回任何结果")
-                return False
-
-            # ── 第二步：评分选出最佳匹配 ──
-            best_entry = self._find_best_match(entries, track_info)
-            if not best_entry:
-                logger.error("未找到评分合格的匹配结果")
-                return False
-
-            video_url = best_entry.get('webpage_url') or f"https://www.youtube.com/watch?v={best_entry['id']}"
-            logger.info(f"使用视频: {video_url}")
-
-            # ── 第三步：下载音频并转码 ──
-            safe_filename = self._create_safe_filename(track_info)
-            final_output_path = os.path.join(output_path, f"{safe_filename}.{format}")
-            temp_filename = f"temp_spotify_dl_{track_info['spotify_id']}"
-            temp_output_template = os.path.join(output_path, f"{temp_filename}.%(ext)s")
-
-            ydl_dl_opts = {
-                'format': 'bestaudio/best',
-                'postprocessors': [{
-                    'key': 'FFmpegExtractAudio',
-                    'preferredcodec': format,
-                    'preferredquality': quality,
-                }],
-                'outtmpl': temp_output_template,
-                'quiet': False,
-                'no_warnings': False,
-                'keepvideo': False,
-                'extractor_retries': 3,
-                'fragment_retries': 3,
-                'js_runtimes': js_runtimes,
-                'http_headers': {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                    'Accept-Language': 'en-us,en;q=0.5',
-                },
-                **common_cookie_opts,
-            }
-
-            with YoutubeDL(ydl_dl_opts) as ydl:
-                ydl.download([video_url])
-
-            logger.info("音频下载完成，开始处理文件...")
-
-            # ── 第四步：找到临时文件，写标签，重命名 ──
-            temp_file_path = os.path.join(output_path, f"{temp_filename}.{format}")
-            if not os.path.exists(temp_file_path):
-                # 容错：查找前缀匹配的文件
-                matched = [
-                    os.path.join(output_path, f)
-                    for f in os.listdir(output_path)
-                    if f.startswith(temp_filename) and f.endswith(f'.{format}')
-                ]
-                if not matched:
-                    logger.error("无法找到下载的音频文件")
-                    return False
-                temp_file_path = matched[0]
-
-            cover_path = self._download_album_cover(track_info)
             self._set_audio_tags(temp_file_path, track_info, cover_path)
-
             if os.path.exists(final_output_path):
                 os.remove(final_output_path)
-            os.rename(temp_file_path, final_output_path)
-
+            os.replace(temp_file_path, final_output_path)
+        finally:
             if cover_path and os.path.exists(cover_path):
                 os.remove(cover_path)
 
-            logger.info(f"下载完成并已设置标签: {safe_filename}.{format}")
-            return True
+        logger.info("下载完成并已设置标签: %s.%s", safe_filename, format)
+        return final_output_path
 
+    def download_track(self, search_query: str, output_path: str, format: str, quality: str,
+                      track_info: Dict[str, Any], cookies: Optional[str] = None,
+                      cookies_from_browser: Optional[str] = None) -> bool:
+        self.last_error = None
+        self.last_output_path = None
+        try:
+            output_path = os.path.abspath(os.path.expanduser(output_path))
+            os.makedirs(output_path, exist_ok=True)
+            _youtube_breaker.check()
+            _wait_for_youtube_rate_slot()
+
+            try:
+                self.last_output_path = self._download_attempt(
+                    search_query, output_path, format, quality, track_info, {}
+                )
+            except Exception as exc:
+                failure = self._classify_error(exc)
+                has_fallback = bool(cookies or cookies_from_browser)
+                if failure.code != "auth_required" or not has_fallback:
+                    raise failure
+
+                logger.warning("匿名下载需要登录，使用备用 Cookies 重试一次")
+                self._cleanup_temporary_files(output_path, track_info["spotify_id"])
+                auth_options = self._get_cookie_options(cookies, cookies_from_browser)
+                self.last_output_path = self._download_attempt(
+                    search_query, output_path, format, quality, track_info, auth_options
+                )
+
+            _youtube_breaker.record_success()
+            return True
         except Exception as e:
-            logger.error(f"使用yt-dlp从YouTube下载失败: {str(e)}")
-            import traceback
-            logger.error(f"详细错误信息: {traceback.format_exc()}")
+            failure = self._classify_error(e)
+            self.last_error = failure
+            _youtube_breaker.record_failure(failure.code)
+            logger.error("使用 yt-dlp 从 YouTube 下载失败 [%s]: %s", failure.code, failure)
             return False
 
 class SpotifyDownloader:
     def __init__(self, client_id: str, client_secret: str):
         """初始化下载器"""
+        self.last_error: Optional[str] = None
+        self.last_error_code: Optional[str] = None
+        self.last_output_path: Optional[str] = None
         self.sp = spotipy.Spotify(
             client_credentials_manager=SpotifyClientCredentials(
                 client_id=client_id,
@@ -406,6 +566,9 @@ class SpotifyDownloader:
     def download(self, url: str, output_path: str, format: str = 'mp3', quality: str = '320k', 
                 source: str = 'auto', cookies: Optional[str] = None, cookies_from_browser: Optional[str] = None) -> bool:
         """下载歌曲"""
+        self.last_error = None
+        self.last_error_code = None
+        self.last_output_path = None
         try:
             # 提取track ID
             track_id = self._extract_track_id(url)
@@ -445,10 +608,16 @@ class SpotifyDownloader:
                     if download_url:
                         logger.info(f"找到音乐源: {music_source.__class__.__name__}")
                         if music_source.download_track(download_url, output_path, format, quality, track_info, cookies, cookies_from_browser):
+                            self.last_output_path = getattr(music_source, "last_output_path", None)
                             logger.info(f"下载完成: {track_info['name']}")
                             return True
                         else:
-                            last_error = f"{music_source.__class__.__name__} 下载失败"
+                            source_error = getattr(music_source, "last_error", None)
+                            if source_error:
+                                self.last_error_code = getattr(source_error, "code", "download_failed")
+                                last_error = str(source_error)
+                            else:
+                                last_error = f"{music_source.__class__.__name__} 下载失败"
                     else:
                         last_error = f"{music_source.__class__.__name__} 未找到匹配的音乐"
                         
@@ -469,5 +638,6 @@ class SpotifyDownloader:
                 raise ValueError(f"无法从指定的音乐源 '{source}' 下载该歌曲。错误: {last_error}")
             
         except Exception as e:
+            self.last_error = str(e)
             logger.error(f"下载失败: {str(e)}")
             return False 

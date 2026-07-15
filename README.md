@@ -1,5 +1,7 @@
 # SpotifyDL
 
+当前版本：`0.2.0`
+
 从 Spotify 单曲链接读取歌曲元数据，并通过 `yt-dlp` 在 YouTube 上搜索、下载音频，最后写入标题、艺人、专辑、年份、曲序和封面等标签。
 
 > 仅供个人学习和研究使用。请遵守 Spotify、YouTube 及相关平台的服务条款和当地法律法规。当前 Web 版建议作为私有工具使用，不建议直接公开给任意用户访问。
@@ -13,7 +15,7 @@
 
 ## 环境要求
 
-- Python 3.8+
+- Python 3.10+
 - FFmpeg（`yt-dlp` 转音频需要）
 - Node.js 20.0.0+（推荐 Node.js 24 LTS 或更新 LTS，用于 YouTube 签名解析）
 
@@ -23,10 +25,10 @@ macOS 可用 Homebrew 安装 FFmpeg：
 brew install ffmpeg
 ```
 
-`yt-dlp` 是 Python 依赖，执行 `pip install -e .` 时会自动安装。需要单独升级时可执行：
+`yt-dlp` 和 PO Token 插件是 Python 依赖，执行 `pip install -e .` 时会自动安装。需要单独升级时可执行：
 
 ```bash
-python -m pip install -U yt-dlp
+python -m pip install -U "yt-dlp[default]" bgutil-ytdlp-pot-provider
 ```
 
 ## 安装
@@ -48,8 +50,11 @@ SPOTIFY_CLIENT_SECRET=your_spotify_client_secret
 # Web 版访问密码，部署到服务器时建议设置
 SPOTIFYDL_WEB_PASSWORD=your_web_password
 
-# 可选：服务器上的 YouTube cookies 文件
+# 可选：备用 YouTube Cookies，仅在内容明确要求登录时使用
 SPOTIFYDL_COOKIES_FILE=/path/to/cookies.txt
+
+# 可选：PO Token Provider 地址；Docker Compose 会自动配置
+SPOTIFYDL_POT_PROVIDER_URL=http://127.0.0.1:4416
 ```
 
 获取 `SPOTIFY_CLIENT_ID` 和 `SPOTIFY_CLIENT_SECRET`：
@@ -83,15 +88,51 @@ Web 版配置项：
 - `SPOTIFYDL_WEB_SOURCE`：下载源，默认 `youtubemusic`。
 - `SPOTIFYDL_WEB_FORMAT`：输出格式，默认 `mp3`。
 - `SPOTIFYDL_WEB_QUALITY`：音频质量，默认 `320k`。
-- `SPOTIFYDL_COOKIES_FILE`：服务器上的 YouTube cookies 文件路径。
+- `SPOTIFYDL_COOKIES_FILE`：备用 YouTube Cookies 文件，仅在登录/年龄限制内容上重试一次。
+- `SPOTIFYDL_POT_PROVIDER_URL`：PO Token Provider 地址；未设置时不启用 Provider。
+- `SPOTIFYDL_CACHE_ENABLED`：是否复用已下载歌曲，默认 `true`。
+- `SPOTIFYDL_CACHE_DIR`：缓存目录，默认 `web_cache/`。
+- `SPOTIFYDL_CACHE_TTL_SECONDS`：缓存有效期，默认 `2592000` 秒（30 天）。
+- `SPOTIFYDL_WEB_RATE_LIMIT_TRACKS`：每个客户端在限流窗口内允许提交的歌曲数，默认 `20`。
+- `SPOTIFYDL_WEB_RATE_LIMIT_WINDOW_SECONDS`：限流窗口，默认 `3600` 秒。
+- `SPOTIFYDL_YOUTUBE_MIN_INTERVAL_SECONDS`：歌曲下载启动的最小间隔，默认 `2` 秒。
+- `SPOTIFYDL_YOUTUBE_MIN_MATCH_SCORE`：YouTube 候选最低匹配分，默认 `4`。
+- `SPOTIFYDL_YOUTUBE_BREAKER_THRESHOLD`：连续风控错误的熔断阈值，默认 `3`。
+- `SPOTIFYDL_YOUTUBE_BREAKER_COOLDOWN_SECONDS`：熔断冷却时间，默认 `900` 秒。
 
-下载文件会保存在项目内的 `web_downloads/`，该目录已被 git 忽略。
+下载文件保存在 `web_downloads/`，缓存保存在 `web_cache/`，两个目录均已被 Git 忽略。同一首歌、格式和音质的并发请求只会实际下载一次。
+
+YouTube 下载默认使用匿名请求。PO Token Provider 可用时会自动获取 Token；只有 yt-dlp 明确返回登录或年龄限制错误时，程序才使用备用 Cookies 重试一次。`403`、`429` 和机器人验证会触发限流/熔断，不会反复使用账号 Cookies。
 
 如果页面提示无法连接 Web 服务或 `Failed to fetch`：
 
 1. 确认服务正在运行。
 2. 确认浏览器打开的是 `http://127.0.0.1:8000`，不要直接打开 HTML 文件。
 3. 修改前端代码后刷新页面；必要时用浏览器强制刷新清理旧脚本缓存。
+
+## Docker 部署
+
+仓库中的 `docker-compose.yml` 会启动 Web 应用和 PO Token Provider。Provider 只在 Docker 内部网络开放，不映射到公网。
+
+```bash
+mkdir -p secrets
+# 可选：需要下载登录受限内容时放置备用 Cookies
+cp /path/to/cookies.txt secrets/youtube-cookies.txt
+sudo chown root:10001 secrets secrets/youtube-cookies.txt
+sudo chmod 750 secrets && sudo chmod 640 secrets/youtube-cookies.txt
+docker compose up -d --build
+```
+
+服务默认监听服务器的 `8000` 端口。查看状态和日志：
+
+```bash
+docker compose ps
+docker compose logs -f app pot-provider
+```
+
+监控系统或反向代理可请求 `GET /healthz`。当 PO Token Provider 不可用或 YouTube 熔断开启时，该接口返回 `503`；正常时返回 `200`。
+
+备用 Cookies 失效时，直接替换服务器上的 `secrets/youtube-cookies.txt`。应用每次需要登录兜底时都会重新读取该文件，不需要重新构建镜像。替换后不要把 Cookies 提交到 Git。
 
 ## CLI 使用
 
@@ -113,7 +154,7 @@ spotifydl -u "https://open.spotify.com/track/..." -o "./music" -s youtubemusic
 
 ![如何获取 Spotify 单曲链接](assets/1.png)
 
-如果遇到 YouTube 机器人验证，可尝试：
+如果内容明确要求登录或年龄验证，可使用浏览器 Cookies 作为一次性兜底：
 
 ```bash
 spotifydl -u "https://open.spotify.com/track/..." -o "./music" --cookies-from-browser chrome

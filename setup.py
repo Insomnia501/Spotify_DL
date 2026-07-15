@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="spotifydl",
-    version="0.1.0",
+    version="0.2.0",
     packages=find_packages(),
     include_package_data=True,
     package_data={
@@ -11,7 +11,8 @@ setup(
     install_requires=[
         "requests>=2.31.0",
         "spotipy>=2.23.0",
-        "yt-dlp>=2023.11.16",
+        "yt-dlp[default]>=2025.5.22",
+        "bgutil-ytdlp-pot-provider>=1.3.1,<2",
         "click>=8.1.7",
         "python-dotenv>=1.0.0",
         "mutagen",
@@ -35,5 +36,5 @@ setup(
         "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
     ],
-    python_requires=">=3.8",
+    python_requires=">=3.10",
 ) 

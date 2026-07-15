@@ -1,0 +1,35 @@
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    init: true
+    env_file:
+      - .env
+    environment:
+      SPOTIFYDL_POT_PROVIDER_URL: http://pot-provider:4416
+      SPOTIFYDL_COOKIES_FILE: /run/secrets/youtube-cookies.txt
+      SPOTIFYDL_CACHE_DIR: /app/web_cache
+    ports:
+      - "${SPOTIFYDL_WEB_PORT:-8000}:8000"
+    volumes:
+      - spotifydl-downloads:/app/web_downloads
+      - spotifydl-cache:/app/web_cache
+      - "${SPOTIFYDL_SECRETS_DIR:-./secrets}:/run/secrets:ro"
+    depends_on:
+      pot-provider:
+        condition: service_healthy
+
+  pot-provider:
+    image: brainicism/bgutil-ytdlp-pot-provider:1.3.1
+    restart: unless-stopped
+    init: true
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4416/ping').then(r => { if (!r.ok) process.exit(1) }).catch(() => process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  spotifydl-downloads:
+  spotifydl-cache:
