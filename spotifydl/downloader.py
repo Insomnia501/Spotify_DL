@@ -300,7 +300,7 @@ class YouTubeSource(MusicSource):
             return {}
         return {
             "extractor_args": {
-                "youtube": {"player_client": ["mweb"]},
+                "youtube": {"player_client": ["web_music"]},
                 "youtubepot-bgutilhttp": {"base_url": [provider_url]},
             }
         }

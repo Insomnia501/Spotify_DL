@@ -267,6 +267,9 @@
       const apiOrigin = window.location.protocol === "file:" ? "http://127.0.0.1:8000" : window.location.origin;
       let currentTaskId = null;
       let pollTimer = null;
+      const STORAGE_KEY_TASK = 'spotifydl_taskId';
+      const STORAGE_KEY_URLS = 'spotifydl_urls';
+      const STORAGE_KEY_PWD = 'spotifydl_pwd';
 
       function headers() {
         const value = passwordInput.value.trim();
@@ -303,6 +306,7 @@
         if (task.zip_file) {
           const link = document.createElement("a");
           link.href = fileUrl(task.id, task.zip_file);
+          link.download = task.zip_file;
           link.textContent = "下载全部 zip";
           actionsEl.appendChild(link);
         }
@@ -334,6 +338,7 @@
           if (item.file) {
             const link = document.createElement("a");
             link.href = fileUrl(task.id, item.file);
+            link.download = item.file;
             link.textContent = "下载";
             action.appendChild(link);
           }
@@ -342,14 +347,36 @@
         }
       }
 
+      function saveState() {
+        if (currentTaskId) localStorage.setItem(STORAGE_KEY_TASK, currentTaskId);
+        localStorage.setItem(STORAGE_KEY_URLS, urlsInput.value);
+        localStorage.setItem(STORAGE_KEY_PWD, passwordInput.value);
+      }
+
+      function clearTaskState() {
+        currentTaskId = null;
+        localStorage.removeItem(STORAGE_KEY_TASK);
+      }
+
       async function pollTask() {
         if (!currentTaskId) return;
-        const data = await requestJson(`/api/tasks/${currentTaskId}`, {headers: headers()});
-        renderTask(data);
-        if (data.status === "done" || data.status === "failed") {
-          clearInterval(pollTimer);
-          pollTimer = null;
-          submitButton.disabled = false;
+        try {
+          const data = await requestJson(`/api/tasks/${currentTaskId}`, {headers: headers()});
+          renderTask(data);
+          if (data.status === "done" || data.status === "failed") {
+            clearInterval(pollTimer);
+            pollTimer = null;
+            submitButton.disabled = false;
+            clearTaskState();
+          }
+        } catch (error) {
+          statusEl.textContent = error.message;
+          if (error.message.includes('不存在') || error.message.includes('过期')) {
+            clearInterval(pollTimer);
+            pollTimer = null;
+            submitButton.disabled = false;
+            clearTaskState();
+          }
         }
       }
 
@@ -368,6 +395,7 @@
             body: JSON.stringify({urls})
           });
           currentTaskId = data.id;
+          saveState();
           renderTask(data);
           clearInterval(pollTimer);
           pollTimer = setInterval(() => pollTask().catch((error) => {
@@ -382,6 +410,40 @@
           submitButton.disabled = false;
         }
       });
+
+      // Restore state on page load
+      (async function restoreState() {
+        const savedPwd = localStorage.getItem(STORAGE_KEY_PWD);
+        if (savedPwd) passwordInput.value = savedPwd;
+        const savedUrls = localStorage.getItem(STORAGE_KEY_URLS);
+        if (savedUrls) urlsInput.value = savedUrls;
+        const savedTaskId = localStorage.getItem(STORAGE_KEY_TASK);
+        if (!savedTaskId) return;
+        currentTaskId = savedTaskId;
+        submitButton.disabled = true;
+        try {
+          const data = await requestJson(`/api/tasks/${currentTaskId}`, {headers: headers()});
+          renderTask(data);
+          if (data.status !== "done" && data.status !== "failed") {
+            pollTimer = setInterval(() => pollTask().catch((error) => {
+              statusEl.textContent = error.message;
+              if (error.message.includes('不存在') || error.message.includes('过期')) {
+                clearInterval(pollTimer);
+                pollTimer = null;
+                submitButton.disabled = false;
+                clearTaskState();
+              }
+            }), 2000);
+          } else {
+            submitButton.disabled = false;
+            clearTaskState();
+          }
+        } catch (error) {
+          statusEl.textContent = error.message;
+          submitButton.disabled = false;
+          clearTaskState();
+        }
+      })();
     </script>
   </body>
 </html>

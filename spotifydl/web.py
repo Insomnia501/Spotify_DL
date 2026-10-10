@@ -442,4 +442,8 @@ def download_file(
     file_path = task_dir / Path(file_name).name
     if not _is_inside(file_path, task_dir) or not file_path.exists() or not file_path.is_file():
         raise HTTPException(status_code=404, detail="文件不存在")
-    return FileResponse(path=str(file_path), filename=file_path.name)
+    return FileResponse(
+        path=str(file_path),
+        filename=file_path.name,
+        content_disposition_type="attachment",
+    )
