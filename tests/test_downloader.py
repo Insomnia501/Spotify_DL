@@ -29,7 +29,7 @@ class YouTubeSourceTests(unittest.TestCase):
         with patch.dict(os.environ, {"SPOTIFYDL_POT_PROVIDER_URL": "http://pot-provider:4416"}):
             options = source._get_extractor_options()
 
-        self.assertEqual(options["extractor_args"]["youtube"]["player_client"], ["mweb"])
+        self.assertEqual(options["extractor_args"]["youtube"]["player_client"], ["web_music"])
         self.assertEqual(
             options["extractor_args"]["youtubepot-bgutilhttp"]["base_url"],
             ["http://pot-provider:4416"],
