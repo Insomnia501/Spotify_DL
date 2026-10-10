@@ -23,9 +23,42 @@ logger = logging.getLogger(__name__)
 class YouTubeDownloadError(RuntimeError):
     """带分类的 YouTube 下载错误，供 Web 层显示可执行的失败原因。"""
 
-    def __init__(self, code: str, message: str):
+    def __init__(self, code: str, message: str, stage: Optional[str] = None):
         super().__init__(message)
         self.code = code
+        self.stage = stage
+
+
+class YouTubeDiagnostics:
+    """Observe provider events without exposing tokens or request credentials."""
+
+    def __init__(self):
+        self.token_requested = False
+        self.token_generated = False
+        self.token_failed = False
+
+    def _observe(self, message):
+        text = str(message).lower()
+        if "generating" in text and "po token" in text:
+            self.token_requested = True
+            logger.info("YouTube [token]: 请求生成 PO Token")
+        if "generated pot:" in text:
+            self.token_generated = True
+            logger.info("YouTube [token]: PO Token 已生成")
+        if any(marker in text for marker in ("[pot]", "[pot:", "po token", "po_token", "/get_pot")) and any(
+            marker in text for marker in ("failed", "error", "cannot", "could not", "not available")
+        ):
+            self.token_failed = True
+            logger.warning("YouTube [token]: PO Token Provider 请求失败")
+
+    def debug(self, message):
+        self._observe(message)
+
+    def warning(self, message):
+        self._observe(message)
+
+    def error(self, message):
+        self._observe(message)
 
 
 class YouTubeCircuitBreaker:
@@ -178,7 +211,7 @@ class YouTubeSource(MusicSource):
                 continue
             score = 0
             title = entry.get('title', '').lower()
-            uploader = (entry.get('uploader', '') + ' ' + entry.get('channel', '')).lower()
+            uploader = ((entry.get('uploader') or '') + ' ' + (entry.get('channel') or '')).lower()
             duration = entry.get('duration') or 0
 
             # 标题匹配（+2）
@@ -300,7 +333,7 @@ class YouTubeSource(MusicSource):
             return {}
         return {
             "extractor_args": {
-                "youtube": {"player_client": ["web_music"]},
+                "youtube": {"player_client": ["mweb"], "pot_trace": ["true"]},
                 "youtubepot-bgutilhttp": {"base_url": [provider_url]},
             }
         }
@@ -377,13 +410,20 @@ class YouTubeSource(MusicSource):
 
         ydl_search_opts = {
             "quiet": True,
-            "no_warnings": True,
+            "extract_flat": True,
+            "socket_timeout": 20,
+            "retries": 1,
             "js_runtimes": js_runtimes,
-            **extractor_options,
             **auth_options,
         }
-        with YoutubeDL(ydl_search_opts) as ydl:
-            search_info = ydl.extract_info(search_url, download=False)
+        try:
+            with YoutubeDL(ydl_search_opts) as ydl:
+                search_info = ydl.extract_info(search_url, download=False)
+        except Exception as exc:
+            failure = self._classify_error(exc)
+            failure.stage = "search"
+            logger.error("YouTube [search]: 候选摘要搜索失败 [%s]", failure.code)
+            raise failure from exc
 
         entries = (search_info.get("entries") or []) if search_info else []
         if not entries:
@@ -399,6 +439,7 @@ class YouTubeSource(MusicSource):
         final_output_path = os.path.join(output_path, f"{safe_filename}.{format}")
         temp_filename = f"temp_spotify_dl_{track_info['spotify_id']}"
         temp_output_template = os.path.join(output_path, f"{temp_filename}.%(ext)s")
+        diagnostics = YouTubeDiagnostics()
 
         ydl_dl_opts = {
             "format": "bestaudio/best",
@@ -413,13 +454,28 @@ class YouTubeSource(MusicSource):
             "keepvideo": False,
             "extractor_retries": 1,
             "fragment_retries": 1,
+            "retries": 1,
+            "socket_timeout": 20,
+            "logger": diagnostics,
             "js_runtimes": js_runtimes,
             "http_headers": {"Accept-Language": "en-us,en;q=0.5"},
             **extractor_options,
             **auth_options,
         }
-        with YoutubeDL(ydl_dl_opts) as ydl:
-            ydl.download([video_url])
+        try:
+            with YoutubeDL(ydl_dl_opts) as ydl:
+                ydl.download([video_url])
+        except Exception as exc:
+            failure = self._classify_error(exc)
+            failure.stage = "token" if diagnostics.token_failed else "download"
+            if diagnostics.token_failed and failure.code not in {"auth_required", "bot_check", "rate_limited"}:
+                failure = YouTubeDownloadError("token_failed", "YouTube 验证服务暂不可用，请稍后重试", "token")
+            logger.error("YouTube [%s]: 媒体提取或下载失败 [%s]", failure.stage, failure.code)
+            raise failure from exc
+        logger.info(
+            "YouTube [download]: 完成，Token 请求=%s，生成=%s，失败=%s",
+            diagnostics.token_requested, diagnostics.token_generated, diagnostics.token_failed,
+        )
 
         temp_file_path = os.path.join(output_path, f"{temp_filename}.{format}")
         if not os.path.exists(temp_file_path):
@@ -479,7 +535,7 @@ class YouTubeSource(MusicSource):
             failure = self._classify_error(e)
             self.last_error = failure
             _youtube_breaker.record_failure(failure.code)
-            logger.error("使用 yt-dlp 从 YouTube 下载失败 [%s]: %s", failure.code, failure)
+            logger.error("使用 yt-dlp 从 YouTube 下载失败 [stage=%s code=%s]: %s", failure.stage or "prepare", failure.code, failure)
             return False
 
 class SpotifyDownloader:

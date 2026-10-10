@@ -104,6 +104,8 @@ Web 版配置项：
 
 YouTube 下载默认使用匿名请求。PO Token Provider 可用时会自动获取 Token；只有 yt-dlp 明确返回登录或年龄限制错误时，程序才使用备用 Cookies 重试一次。`403`、`429` 和机器人验证会触发限流/熔断，不会反复使用账号 Cookies。
 
+搜索采用 `ytsearch5` 的候选摘要模式，不逐个提取候选视频的播放信息；选中一个视频后，再使用 `mweb` 客户端和 PO Token Provider 提取媒体流。日志区分 `search`、`token`、`download` 阶段，并记录 Token 请求、生成和失败状态，不输出 Token 内容。`/healthz` 的 Provider 检查仅表示 `/ping` 可达，实际 Token 是否生成成功需查看下载日志。
+
 如果页面提示无法连接 Web 服务或 `Failed to fetch`：
 
 1. 确认服务正在运行。
