@@ -129,23 +129,44 @@ class YouTubeSourceTests(unittest.TestCase):
         self.assertEqual(attempt.call_args_list[0].args[-1], {})
         self.assertEqual(attempt.call_args_list[1].args[-1]["cookiefile"], str(cookie_file))
 
-    def test_does_not_send_cookies_for_bot_check(self):
+    def test_retries_bot_check_once_with_cookies(self):
         source = YouTubeSource()
         project_root = Path(__file__).resolve().parents[1]
         with tempfile.TemporaryDirectory(dir=project_root) as output_dir:
             cookie_file = Path(output_dir) / "cookies.txt"
-            cookie_file.write_text("# Netscape HTTP Cookie File\n", encoding="utf-8")
+            cookie_file.write_text("# Netscape HTTP Cookie File\\n", encoding="utf-8")
             with patch.dict(os.environ, {"SPOTIFYDL_YOUTUBE_MIN_INTERVAL_SECONDS": "0"}), patch.object(
                 source,
                 "_download_attempt",
-                side_effect=YouTubeDownloadError("bot_check", "机器人验证"),
+                side_effect=[YouTubeDownloadError("bot_check", "机器人验证"), str(Path(output_dir) / "song.mp3")],
+            ) as attempt:
+                success = source.download_track(
+                    "query", output_dir, "mp3", "320k", TRACK_INFO, cookies=str(cookie_file)
+                )
+
+        self.assertTrue(success)
+        self.assertEqual(attempt.call_count, 2)
+        self.assertEqual(attempt.call_args_list[0].args[-1], {})
+        self.assertEqual(attempt.call_args_list[1].args[-1]["cookiefile"], str(cookie_file))
+
+    def test_does_not_retry_bot_check_more_than_once(self):
+        source = YouTubeSource()
+        project_root = Path(__file__).resolve().parents[1]
+        with tempfile.TemporaryDirectory(dir=project_root) as output_dir:
+            cookie_file = Path(output_dir) / "cookies.txt"
+            cookie_file.write_text("# Netscape HTTP Cookie File\\n", encoding="utf-8")
+            with patch.dict(os.environ, {"SPOTIFYDL_YOUTUBE_MIN_INTERVAL_SECONDS": "0"}), patch.object(
+                source,
+                "_download_attempt",
+                side_effect=[YouTubeDownloadError("bot_check", "机器人验证"), YouTubeDownloadError("bot_check", "仍需验证")],
             ) as attempt:
                 success = source.download_track(
                     "query", output_dir, "mp3", "320k", TRACK_INFO, cookies=str(cookie_file)
                 )
 
         self.assertFalse(success)
-        self.assertEqual(attempt.call_count, 1)
+        self.assertEqual(attempt.call_count, 2)
+        self.assertEqual(attempt.call_args_list[1].args[-1]["cookiefile"], str(cookie_file))
         self.assertEqual(source.last_error.code, "bot_check")
 
 

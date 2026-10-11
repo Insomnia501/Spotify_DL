@@ -408,12 +408,17 @@ class YouTubeSource(MusicSource):
         js_runtimes = self._get_js_runtimes()
         extractor_options = self._get_extractor_options()
 
+        user_agent = os.getenv("SPOTIFYDL_YOUTUBE_USER_AGENT", "").strip()
+        headers = {"Accept-Language": "en-us,en;q=0.5"}
+        if user_agent:
+            headers["User-Agent"] = user_agent
         ydl_search_opts = {
             "quiet": True,
             "extract_flat": True,
             "socket_timeout": 20,
             "retries": 1,
             "js_runtimes": js_runtimes,
+            "http_headers": headers,
             **auth_options,
         }
         try:
@@ -458,7 +463,7 @@ class YouTubeSource(MusicSource):
             "socket_timeout": 20,
             "logger": diagnostics,
             "js_runtimes": js_runtimes,
-            "http_headers": {"Accept-Language": "en-us,en;q=0.5"},
+            "http_headers": headers,
             **extractor_options,
             **auth_options,
         }
@@ -519,10 +524,10 @@ class YouTubeSource(MusicSource):
             except Exception as exc:
                 failure = self._classify_error(exc)
                 has_fallback = bool(cookies or cookies_from_browser)
-                if failure.code != "auth_required" or not has_fallback:
+                if failure.code not in {"auth_required", "bot_check"} or not has_fallback:
                     raise failure
 
-                logger.warning("匿名下载需要登录，使用备用 Cookies 重试一次")
+                logger.warning("匿名下载需要登录或机器人验证，使用备用 Cookies 重试一次")
                 self._cleanup_temporary_files(output_path, track_info["spotify_id"])
                 auth_options = self._get_cookie_options(cookies, cookies_from_browser)
                 self.last_output_path = self._download_attempt(
