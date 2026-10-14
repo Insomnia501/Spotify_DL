@@ -136,6 +136,27 @@ docker compose logs -f app pot-provider
 
 备用 Cookies 失效时，直接替换服务器上的 `secrets/youtube-cookies.txt`。应用每次需要登录兜底时都会重新读取该文件，不需要重新构建镜像。替换后不要把 Cookies 提交到 Git。
 
+## 音乐推荐留言板
+
+首页下载区下方可公开提交 Spotify 单曲链接、昵称和选填的推荐理由，无需下载访问密码。提交只查询 Spotify 元数据，不下载音频。同一首歌可被多人推荐，列表按时间倒序显示最新 20 条，更早记录仍保留。
+
+- 昵称：1～30 个字符；推荐理由：最多 300 个字符。
+- 每个客户端每小时最多尝试提交 10 次；限流计数在服务重启后重置。
+- `SPOTIFYDL_RECOMMENDATIONS_DB`：数据库路径，默认 `data/recommendations.sqlite3`，首次启动自动建表。
+- Docker 使用 `spotifydl-data` 持久卷保存数据库，重建容器不会丢失数据；不要执行 `docker compose down -v`，该操作会删除数据卷。
+- `GET /api/recommendations` 返回最新列表；`POST /api/recommendations` 接收 `spotify_url`、`nickname`、`reason`，成功返回 `201`。
+
+反向代理部署时，仅让 Uvicorn 信任实际代理地址。例如使用 `--proxy-headers --forwarded-allow-ips="127.0.0.1"`（代理必须确实来自该地址）；Docker 环境应设置实际代理 IP。不要使用 `*` 信任所有来源。推荐接口使用经过可信代理处理的客户端 IP，不直接读取任意 `X-Forwarded-For`。
+
+本地测试：
+
+```bash
+python -m pip install -e '.[test]'
+python -m unittest discover -s tests -v
+```
+
+备份 SQLite 时使用 SQLite backup API，或停止服务后一起保存数据库及其 `-wal`、`-shm` 文件。列表封面由 Spotify 图片地址加载，昵称是用户自行填写的显示名称。
+
 ## CLI 使用
 
 ```bash

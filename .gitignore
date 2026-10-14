@@ -10,6 +10,8 @@ dist/
 downloads/
 web_downloads/
 web_cache/
+data/
+.qa/
 secrets/
 eggs/
 .eggs/

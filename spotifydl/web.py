@@ -20,6 +20,7 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
 from .downloader import SpotifyDownloader, get_youtube_health
+from .recommendations import RecommendationStore, create_router
 
 load_dotenv()
 
@@ -48,6 +49,11 @@ if CACHE_ENABLED:
     CACHE_ROOT.mkdir(parents=True, exist_ok=True)
 
 app = FastAPI(title="SpotifyDownloader Web")
+recommendation_store = RecommendationStore(
+    Path(os.getenv("SPOTIFYDL_RECOMMENDATIONS_DB", str(PROJECT_ROOT / "data" / "recommendations.sqlite3"))).expanduser()
+)
+recommendation_store.initialize()
+app.include_router(create_router(recommendation_store))
 app.mount("/assets", StaticFiles(directory=str(ASSETS_DIR)), name="assets")
 templates = Jinja2Templates(directory=str(TEMPLATE_DIR))
 executor = ThreadPoolExecutor(max_workers=MAX_WORKERS)

@@ -23,7 +23,7 @@ RUN python -m pip install --upgrade pip \
 
 RUN groupadd --gid 10001 spotifydl \
     && useradd --create-home --uid 10001 --gid 10001 spotifydl \
-    && mkdir -p /app/web_downloads /app/web_cache \
+    && mkdir -p /app/web_downloads /app/web_cache /app/data \
     && chown -R spotifydl:spotifydl /app
 
 USER spotifydl

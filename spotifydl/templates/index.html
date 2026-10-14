@@ -7,17 +7,20 @@
     <style>
       :root {
         color-scheme: light;
-        --panel: rgba(255, 255, 255, 0.92);
-        --text: #1f2520;
-        --muted: #68706a;
-        --line: rgba(31, 37, 32, 0.18);
-        --accent: #1db954;
-        --accent-dark: #14863d;
+        --panel: #fafaf8;
+        --text: #292728;
+        --muted: #6d6868;
+        --line: #dedbd8;
+        --accent: #703544;
+        --accent-dark: #542633;
+        --brass: #a28a58;
+        --display-font: Georgia, "Times New Roman", "Songti SC", "Noto Serif CJK SC", serif;
         --error: #b42318;
       }
 
       * {
         box-sizing: border-box;
+        letter-spacing: 0;
       }
 
       body {
@@ -31,25 +34,28 @@
       }
 
       main {
-        width: min(920px, calc(100vw - 32px));
-        margin: 40px auto;
+        width: min(960px, calc(100vw - 40px));
+        margin: 48px auto;
       }
 
       h1 {
-        margin: 0 0 20px;
-        color: #fff;
-        font-size: 28px;
-        font-weight: 700;
+        margin: 0 0 26px;
+        color: #fafaf8;
+        font-family: var(--display-font);
+        font-size: 38px;
+        line-height: 1.2;
+        font-weight: 400;
         text-shadow: 0 2px 14px rgba(0, 0, 0, 0.35);
+        overflow-wrap: anywhere;
       }
 
       .panel {
         background: var(--panel);
         border: 1px solid var(--line);
         border-radius: 8px;
-        padding: 20px;
-        box-shadow: 0 18px 60px rgba(0, 0, 0, 0.22);
-        backdrop-filter: blur(10px);
+        padding: 28px 32px;
+        border-top: 2px solid var(--brass);
+        box-shadow: 0 8px 28px rgba(0, 0, 0, 0.18);
       }
 
       label {
@@ -63,7 +69,7 @@
         display: flex;
         flex-wrap: wrap;
         align-items: center;
-        gap: 8px;
+        gap: 10px;
         margin-bottom: 10px;
       }
 
@@ -81,8 +87,8 @@
         width: 24px;
         height: 22px;
         border: 1px solid var(--line);
-        border-radius: 6px;
-        background: rgba(255, 255, 255, 0.82);
+        border-radius: 3px;
+        background: #f0eeeb;
         color: var(--text);
         font-size: 15px;
         font-weight: 700;
@@ -93,15 +99,22 @@
       input {
         width: 100%;
         border: 1px solid var(--line);
-        border-radius: 8px;
+        border-radius: 4px;
         padding: 12px;
         color: var(--text);
         font: inherit;
         background: #fff;
+        line-height: 1.5;
       }
 
+      input:focus-visible, textarea:focus-visible, button:focus-visible, a:focus-visible, .recommendation-list:focus-visible {
+        outline: 2px solid var(--brass);
+        outline-offset: 3px;
+      }
+      input::placeholder, textarea::placeholder { color: #898383; }
+
       textarea {
-        min-height: 180px;
+        min-height: 150px;
         resize: vertical;
       }
 
@@ -116,12 +129,12 @@
       button {
         min-width: 124px;
         height: 44px;
-        border: 0;
-        border-radius: 8px;
+        border: 1px solid var(--accent);
+        border-radius: 4px;
         background: var(--accent);
         color: #fff;
         font: inherit;
-        font-weight: 700;
+        font-weight: 600;
         cursor: pointer;
       }
 
@@ -152,7 +165,7 @@
         align-items: center;
         min-height: 44px;
         border: 1px solid var(--line);
-        border-radius: 8px;
+        border-radius: 4px;
         padding: 10px;
         background: #fff;
       }
@@ -160,9 +173,9 @@
       .badge {
         display: inline-flex;
         justify-content: center;
-        border-radius: 999px;
+        border-radius: 3px;
         padding: 4px 8px;
-        background: #eef1ed;
+        background: #f0eeeb;
         color: var(--muted);
         font-size: 13px;
       }
@@ -179,7 +192,7 @@
 
       a {
         color: var(--accent-dark);
-        font-weight: 700;
+        font-weight: 500;
         text-decoration: none;
       }
 
@@ -198,6 +211,8 @@
         margin-top: 16px;
       }
 
+      a:hover { text-decoration: underline; text-underline-offset: 3px; }
+
       .sr-only {
         position: absolute;
         width: 1px;
@@ -213,7 +228,12 @@
       @media (max-width: 680px) {
         main {
           margin: 24px auto;
+          width: calc(100% - 28px);
         }
+
+        h1 { font-size: 29px; margin-bottom: 20px; }
+        .panel { padding: 22px 18px; }
+        .field-hint { flex-wrap: wrap; }
 
         .row,
         .item {
@@ -223,6 +243,61 @@
         button {
           width: 100%;
         }
+      }
+      .recommendations {
+        margin-top: 24px;
+        background: var(--panel);
+        padding: 0 32px;
+        border: 1px solid var(--line);
+        border-top: 2px solid var(--brass);
+        border-radius: 8px;
+        overflow: hidden;
+        box-shadow: 0 8px 28px rgba(0, 0, 0, 0.18);
+      }
+      .recommendations h2 { margin: 0; font-family: var(--display-font); font-size: 22px; font-weight: 500; line-height: 1.5; }
+      .recommendations h3 { margin: 0 0 20px; font-family: var(--display-font); font-size: 18px; font-weight: 500; }
+      #recommendation-form { margin: 0 -32px; padding: 26px 32px; background: #f2f1ef; border-top: 1px solid var(--line); }
+      #recommendation-form label { font-size: 13px; color: var(--muted); }
+      #recommendation-form input, #recommendation-form textarea { border-radius: 4px; border-color: var(--line); font-size: 14px; padding: 11px 12px; }
+      #recommendation-form input:focus, #recommendation-form textarea:focus { outline: 2px solid var(--brass); outline-offset: 1px; border-color: var(--brass); }
+      #recommendation-submit { border-radius: 4px; font-size: 14px; min-width: 112px; }
+      .recommendation-fields { display: grid; grid-template-columns: minmax(0, 1fr) minmax(160px, 240px); gap: 16px; }
+      .recommendation-bottom { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 16px; margin-top: 16px; }
+      #recommendation-reason { min-height: 88px; height: 88px; max-height: 200px; }
+      .recommendation-heading { display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; align-items: center; padding: 26px 0 18px; border-bottom: 1px solid var(--line); }
+      .recommendation-heading span { color: var(--muted); font-size: 12px; }
+      .recommendation-list { max-height: 500px; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; scrollbar-width: thin; scrollbar-color: #b5ada8 transparent; }
+      .recommendation-list::-webkit-scrollbar { width: 7px; }
+      .recommendation-list::-webkit-scrollbar-thumb { background: #b5ada8; border-radius: 4px; }
+      .recommendation-entry { display: grid; grid-template-columns: 56px minmax(0, 1.15fr) minmax(0, 1fr) minmax(0, 112px); align-items: start; gap: 18px; min-height: 100px; padding: 20px 4px; border-bottom: 1px solid #e9e6e2; }
+      .recommendation-entry:hover { background: #f3f1ee; }
+      .recommendation-entry:last-child { border-bottom: 0; }
+      .recommendation-cover { width: 56px; height: 56px; border-radius: 3px; background: #ece9e4; border: 1px solid #ded9d1; display: grid; place-items: center; color: var(--muted); overflow: hidden; }
+      .recommendation-cover img { width: 100%; height: 100%; object-fit: cover; }
+      .recommendation-cover span { font-size: 12px; }
+      .recommendation-song, .recommendation-note, .recommendation-by { min-width: 0; overflow-wrap: anywhere; }
+      .recommendation-title { display: block; color: var(--text); font-size: 15px; line-height: 1.5; font-weight: 600; }
+      .recommendation-title:hover { color: var(--accent); text-decoration: underline; }
+      .recommendation-artist { color: var(--muted); font-size: 13px; margin: 4px 0 8px; }
+      .recommendation-link { font-size: 12px; font-weight: 400; }
+      .recommendation-note { font-size: 14px; line-height: 1.7; white-space: pre-wrap; margin: 0; color: #615a59; }
+      .recommendation-by { font-size: 13px; line-height: 1.5; color: var(--accent); }
+      .recommendation-by time { display: block; margin-top: 6px; color: var(--muted); font-size: 12px; }
+      .recommendation-feedback { margin: 12px 0 0; font-size: 14px; min-height: 20px; }
+      .recommendation-feedback[data-error="true"] { color: var(--error); }
+      .recommendation-empty { color: var(--muted); padding: 48px 16px; margin: 0; text-align: center; font-size: 14px; }
+      #recommendation-retry { margin: 8px 0; background: transparent; border: 1px solid var(--line); color: var(--text); }
+      [hidden] { display: none !important; }
+      @media (max-width: 680px) {
+        .recommendations { padding: 0 16px; }
+        .recommendations h2 { font-size: 20px; }
+        #recommendation-form { margin: 0 -16px; padding: 22px 16px; }
+        .recommendation-heading { padding-top: 20px; }
+        .recommendation-fields, .recommendation-bottom { grid-template-columns: minmax(0, 1fr); }
+        .recommendation-entry { grid-template-columns: 56px minmax(0, 1fr); gap: 10px 14px; }
+        .recommendation-cover { grid-row: 1 / span 3; }
+        .recommendation-note, .recommendation-by { grid-column: 2; }
+        .recommendation-by time { margin-top: 2px; }
       }
     </style>
   </head>
@@ -254,6 +329,24 @@
         <div id="actions" class="actions"></div>
         <div id="items" class="items"></div>
       </form>
+      <section class="recommendations" aria-labelledby="recommendations-title">
+        <div class="recommendation-heading"><h2 id="recommendations-title">音乐种草留言板</h2><span>最近 20 条</span></div>
+        <p id="recommendation-list-status" class="recommendation-feedback" role="status">正在加载推荐…</p>
+        <button id="recommendation-retry" type="button" hidden>重新加载</button>
+        <div id="recommendation-list" class="recommendation-list" tabindex="0" aria-label="音乐种草留言板"></div>
+        <form id="recommendation-form">
+          <h3>推荐你喜欢的音乐</h3>
+          <div class="recommendation-fields">
+            <div><label for="recommendation-url">Spotify 单曲链接</label><input id="recommendation-url" type="url" required maxlength="2048" placeholder="https://open.spotify.com/track/..." autocomplete="off"></div>
+            <div><label for="recommendation-nickname">推荐人昵称</label><input id="recommendation-nickname" required maxlength="30" autocomplete="nickname" placeholder="你的昵称"></div>
+          </div>
+          <div class="recommendation-bottom">
+            <div><label for="recommendation-reason">推荐理由（选填）</label><textarea id="recommendation-reason" maxlength="300"></textarea></div>
+            <button id="recommendation-submit" type="submit">提交推荐</button>
+          </div>
+          <p id="recommendation-feedback" class="recommendation-feedback" role="status" aria-live="polite"></p>
+        </form>
+      </section>
     </main>
 
     <script>
@@ -444,6 +537,153 @@
           clearTaskState();
         }
       })();
+      const recommendationForm = document.querySelector('#recommendation-form');
+      const recommendationSubmit = document.querySelector('#recommendation-submit');
+      const recommendationList = document.querySelector('#recommendation-list');
+      const recommendationListStatus = document.querySelector('#recommendation-list-status');
+      const recommendationRetry = document.querySelector('#recommendation-retry');
+      const recommendationFeedback = document.querySelector('#recommendation-feedback');
+      let recommendationLoading = false;
+      let recommendationRefreshPending = false;
+      let recommendationScrollPending = false;
+      let recommendationTimer = null;
+
+      async function recommendationRequest(options = {}) {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 25000);
+        try {
+          return await requestJson('/api/recommendations', {...options, signal: controller.signal});
+        } catch (error) {
+          if (error.name === 'AbortError') throw new Error('请求超时，请稍后刷新推荐列表确认结果。');
+          throw error;
+        } finally { clearTimeout(timeout); }
+      }
+
+      function recommendationElement(tag, className, text) {
+        const element = document.createElement(tag);
+        element.className = className;
+        if (text !== undefined) element.textContent = text;
+        return element;
+      }
+
+      function spotifyRecommendationLink(url, className, text) {
+        const element = recommendationElement('a', className, text);
+        element.href = url;
+        element.target = '_blank';
+        element.rel = 'noopener noreferrer';
+        return element;
+      }
+
+      function renderRecommendations(items) {
+        const fragment = document.createDocumentFragment();
+        for (const item of items) {
+          const row = recommendationElement('article', 'recommendation-entry');
+          const cover = recommendationElement('div', 'recommendation-cover');
+          const fallback = recommendationElement('span', '', '暂无封面');
+          cover.append(fallback);
+          if (item.cover_url) {
+            const image = document.createElement('img');
+            image.alt = `${item.album} 专辑封面`;
+            image.loading = 'lazy';
+            image.addEventListener('error', () => { image.remove(); fallback.hidden = false; }, {once: true});
+            image.addEventListener('load', () => { fallback.hidden = true; });
+            image.src = item.cover_url;
+            // Hide the placeholder while the image occupies its fixed slot.
+            fallback.hidden = true;
+            cover.append(image);
+          }
+          const song = recommendationElement('div', 'recommendation-song');
+          song.append(spotifyRecommendationLink(item.spotify_url, 'recommendation-title', item.name));
+          song.append(recommendationElement('div', 'recommendation-artist', item.artists.join(' / ')));
+          song.append(spotifyRecommendationLink(item.spotify_url, 'recommendation-link', '在 Spotify 查看'));
+          const note = recommendationElement('p', 'recommendation-note', item.reason || '');
+          const by = recommendationElement('div', 'recommendation-by', item.nickname);
+          const timestamp = recommendationElement('time', '', new Date(item.created_at).toLocaleString('zh-CN', {
+            month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false
+          }));
+          timestamp.dateTime = item.created_at;
+          timestamp.title = new Date(item.created_at).toLocaleString('zh-CN');
+          by.append(timestamp);
+          row.append(cover, song, note, by);
+          fragment.append(row);
+        }
+        if (!items.length) fragment.append(recommendationElement('p', 'recommendation-empty', '还没有推荐，分享第一首歌吧。'));
+        recommendationList.replaceChildren(fragment);
+      }
+
+      async function loadRecommendations(scrollToTop = false) {
+        recommendationScrollPending ||= scrollToTop;
+        if (recommendationLoading) { recommendationRefreshPending = true; return; }
+        recommendationLoading = true;
+        try {
+          const data = await recommendationRequest();
+          const position = recommendationList.scrollTop;
+          renderRecommendations(data.items);
+          recommendationList.scrollTop = recommendationScrollPending ? 0 : position;
+          recommendationScrollPending = false;
+          recommendationListStatus.textContent = '';
+          recommendationListStatus.hidden = true;
+          recommendationRetry.hidden = true;
+        } catch (error) {
+          recommendationListStatus.hidden = false;
+          recommendationListStatus.textContent = '推荐列表加载失败，请重试。';
+          recommendationRetry.hidden = false;
+        } finally {
+          recommendationLoading = false;
+          if (recommendationRefreshPending) {
+            recommendationRefreshPending = false;
+            void loadRecommendations();
+          }
+        }
+      }
+
+      recommendationForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        if (recommendationSubmit.disabled) return;
+        const urlInput = document.querySelector('#recommendation-url');
+        const nicknameInput = document.querySelector('#recommendation-nickname');
+        const reasonInput = document.querySelector('#recommendation-reason');
+        recommendationFeedback.dataset.error = 'false';
+        const payload = {spotify_url: urlInput.value.trim(), nickname: nicknameInput.value.trim(), reason: reasonInput.value.trim()};
+        try {
+          const parsed = new URL(payload.spotify_url);
+          if (parsed.protocol !== 'https:' || parsed.host !== 'open.spotify.com' || !/^\/track\/[A-Za-z0-9]{22}\/?$/.test(parsed.pathname)) throw new Error();
+        } catch {
+          recommendationFeedback.dataset.error = 'true';
+          recommendationFeedback.textContent = '链接格式有误，请输入 Spotify 单曲链接';
+          return;
+        }
+        if (!payload.nickname) {
+          recommendationFeedback.dataset.error = 'true';
+          recommendationFeedback.textContent = '请填写推荐人昵称';
+          return;
+        }
+        recommendationSubmit.disabled = true;
+        recommendationFeedback.textContent = '正在提交…';
+        try {
+          await recommendationRequest({method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)});
+          urlInput.value = '';
+          reasonInput.value = '';
+          recommendationFeedback.textContent = '推荐已发布';
+          await loadRecommendations(true);
+        } catch (error) {
+          recommendationFeedback.dataset.error = 'true';
+          recommendationFeedback.textContent = error.message;
+        } finally { recommendationSubmit.disabled = false; }
+      });
+
+      recommendationRetry.addEventListener('click', () => loadRecommendations());
+      function scheduleRecommendationRefresh() {
+        clearInterval(recommendationTimer);
+        recommendationTimer = null;
+        if (!document.hidden) recommendationTimer = setInterval(() => loadRecommendations(), 30000);
+      }
+      document.addEventListener('visibilitychange', () => {
+        scheduleRecommendationRefresh();
+        if (!document.hidden) void loadRecommendations();
+      });
+      void loadRecommendations();
+      scheduleRecommendationRefresh();
     </script>
   </body>
 </html>

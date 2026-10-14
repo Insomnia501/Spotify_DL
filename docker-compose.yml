@@ -9,11 +9,13 @@ services:
       SPOTIFYDL_POT_PROVIDER_URL: http://pot-provider:4416
       SPOTIFYDL_COOKIES_FILE: /run/secrets/youtube-cookies.txt
       SPOTIFYDL_CACHE_DIR: /app/web_cache
+      SPOTIFYDL_RECOMMENDATIONS_DB: /app/data/recommendations.sqlite3
     ports:
       - "${SPOTIFYDL_WEB_PORT:-8000}:8000"
     volumes:
       - spotifydl-downloads:/app/web_downloads
       - spotifydl-cache:/app/web_cache
+      - spotifydl-data:/app/data
       - "${SPOTIFYDL_SECRETS_DIR:-./secrets}:/run/secrets:ro"
     depends_on:
       pot-provider:
@@ -33,3 +35,4 @@ services:
 volumes:
   spotifydl-downloads:
   spotifydl-cache:
+  spotifydl-data:

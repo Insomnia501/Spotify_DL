@@ -3,6 +3,8 @@
 venv
 web_downloads
 web_cache
+data
+.qa
 secrets
 __pycache__
 *.py[cod]

@@ -25,6 +25,7 @@ setup(
             "spotifydl=spotifydl.cli:main",
         ],
     },
+    extras_require={"test": ["httpx>=0.27"]},
     author="Your Name",
     author_email="your.email@example.com",
     description="A tool to download music from Spotify links",
